@@ -8,12 +8,14 @@ import {
   NODE_RADIUS,
   type CausalProps,
   type Doc,
+  type StoryStep,
   type SysEdge,
   type SysNode,
 } from './types';
 
 export type Tool = 'pen' | 'hand' | 'eraser';
-export type Mode = 'edit' | 'sim';
+/** edit : édition ; sim : simulation libre ; present : récit pas à pas (avec simulation). */
+export type Mode = 'edit' | 'sim' | 'present';
 export type Selection = { kind: 'node' | 'edge' | 'loop'; id: string } | null;
 
 /** Deux modifications de même clé à moins de MERGE_MS d'écart ne font qu'une étape d'annulation. */
@@ -39,6 +41,11 @@ export class Editor {
   private future: string[] = [];
   private lastKey: string | null = null;
   private lastTime = 0;
+
+  /** Simulation en cours (libre ou pendant une présentation). */
+  get simulating() {
+    return this.mode !== 'edit';
+  }
 
   changed() {
     // Une boucle sélectionnée peut disparaître (lien inversé, supprimé…).
@@ -239,8 +246,93 @@ export class Editor {
     if (nodes.size === 0 && edges.size === 0) return;
     this.checkpoint();
     this.doc.nodes = this.doc.nodes.filter((n) => !nodes.has(n.id));
-    this.doc.edges = this.doc.edges.filter((e) => !edges.has(e.id) && !nodes.has(e.from) && !nodes.has(e.to));
+    this.doc.edges = this.doc.edges.filter((e) => {
+      const keep = !edges.has(e.id) && !nodes.has(e.from) && !nodes.has(e.to);
+      if (!keep) edges.add(e.id);
+      return keep;
+    });
+    // Le récit ne doit pas garder de références vers des éléments disparus.
+    for (const step of this.doc.story.steps) {
+      step.focus = step.focus.filter((id) => !nodes.has(id) && !edges.has(id));
+      if (step.pulse && nodes.has(step.pulse.node)) step.pulse = null;
+    }
     this.validateSelection();
+    this.changed();
+  }
+
+  // --- Récit -------------------------------------------------------------------
+
+  step(id: string): StoryStep | undefined {
+    return this.doc.story.steps.find((s) => s.id === id);
+  }
+
+  /** Ajoute une étape après `afterId` (ou à la fin). */
+  addStep(afterId?: string): StoryStep {
+    this.checkpoint();
+    const step: StoryStep = { id: newId('s'), text: '', focus: [], pulse: null };
+    const steps = this.doc.story.steps;
+    const i = afterId ? steps.findIndex((s) => s.id === afterId) : -1;
+    steps.splice(i < 0 ? steps.length : i + 1, 0, step);
+    this.changed();
+    return step;
+  }
+
+  updateStep(id: string, patch: Partial<Omit<StoryStep, 'id'>>, key?: string) {
+    const step = this.step(id);
+    if (!step) return;
+    this.checkpoint(key);
+    Object.assign(step, patch);
+    this.changed();
+  }
+
+  removeStep(id: string) {
+    if (!this.step(id)) return;
+    this.checkpoint();
+    this.doc.story.steps = this.doc.story.steps.filter((s) => s.id !== id);
+    this.changed();
+  }
+
+  moveStep(id: string, by: -1 | 1) {
+    const steps = this.doc.story.steps;
+    const i = steps.findIndex((s) => s.id === id);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= steps.length) return;
+    this.checkpoint();
+    [steps[i], steps[j]] = [steps[j], steps[i]];
+    this.changed();
+  }
+
+  setReveal(reveal: boolean) {
+    this.checkpoint();
+    this.doc.story.reveal = reveal;
+    this.changed();
+  }
+
+  /**
+   * Ajoute ou retire des éléments de la mise en avant d'une étape.
+   * Si tous y sont déjà, on les retire ; sinon on les ajoute tous.
+   * Ajouter un lien ajoute aussi ses deux extrémités.
+   */
+  toggleFocus(stepId: string, ids: string[]) {
+    const step = this.step(stepId);
+    if (!step || ids.length === 0) return;
+    this.checkpoint();
+    const focus = new Set(step.focus);
+    if (ids.every((id) => focus.has(id))) {
+      for (const id of ids) focus.delete(id);
+      // Un lien mis en avant ramènerait ses extrémités : on retire aussi les liens des nœuds retirés.
+      for (const e of this.doc.edges) if (ids.includes(e.from) || ids.includes(e.to)) focus.delete(e.id);
+    } else {
+      for (const id of ids) {
+        focus.add(id);
+        const e = this.edge(id);
+        if (e) {
+          focus.add(e.from);
+          focus.add(e.to);
+        }
+      }
+    }
+    step.focus = [...focus];
     this.changed();
   }
 

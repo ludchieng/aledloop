@@ -193,14 +193,18 @@ export function classifyStroke(points: Pt[], scale = 1): Stroke {
   };
 }
 
-export function docBounds(doc: Doc): Box | null {
-  if (doc.nodes.length === 0) return null;
+export function nodesBounds(nodes: SysNode[]): Box | null {
+  if (nodes.length === 0) return null;
   return {
-    minX: Math.min(...doc.nodes.map((n) => n.x - n.r)),
-    minY: Math.min(...doc.nodes.map((n) => n.y - n.r)),
-    maxX: Math.max(...doc.nodes.map((n) => n.x + n.r)),
-    maxY: Math.max(...doc.nodes.map((n) => n.y + n.r)),
+    minX: Math.min(...nodes.map((n) => n.x - n.r)),
+    minY: Math.min(...nodes.map((n) => n.y - n.r)),
+    maxX: Math.max(...nodes.map((n) => n.x + n.r)),
+    maxY: Math.max(...nodes.map((n) => n.y + n.r)),
   };
+}
+
+export function docBounds(doc: Doc): Box | null {
+  return nodesBounds(doc.nodes);
 }
 
 // --- Étiquettes de boucle (R / B) ------------------------------------------------

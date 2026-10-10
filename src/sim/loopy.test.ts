@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultCausal, type CausalProps, type Doc, type SysEdge } from '../model/types';
+import { defaultCausal, emptyStory, type CausalProps, type Doc, type SysEdge } from '../model/types';
 import { DELAY_FACTORS, EDGE_TIME, HISTORY_DT, LoopySim, MAX_SIGNALS, STEP } from './loopy';
 
 function chain(polarity: 1 | -1, causal: Partial<CausalProps> = {}, edge: Partial<SysEdge> = {}): Doc {
@@ -18,6 +18,7 @@ function chain(polarity: 1 | -1, causal: Partial<CausalProps> = {}, edge: Partia
       { id: 'ab', from: 'a', to: 'b', polarity, weight: 1, delay: 0, bend: 0, ...edge },
       { id: 'bc', from: 'b', to: 'c', polarity, weight: 1, delay: 0, bend: 0 },
     ],
+    story: emptyStory(),
   };
 }
 

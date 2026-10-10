@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultCausal, type Doc, type SysNode } from '../model/types';
+import { defaultCausal, emptyStory, type Doc, type SysNode } from '../model/types';
 import { bendThrough, classifyStroke, dist, docBounds, edgeGeom, hitTest, quadPoint, type Pt } from './geometry';
 
 const node = (id: string, x: number, y: number, r = 40): SysNode => ({ id, x, y, r, label: id, color: 'sage', causal: defaultCausal() });
@@ -42,6 +42,7 @@ describe('hitTest', () => {
     version: 1,
     nodes: [node('a', 0, 0), node('b', 300, 0)],
     edges: [{ id: 'e', from: 'a', to: 'b', polarity: 1, weight: 1, delay: 0, bend: 0 }],
+    story: emptyStory(),
   };
 
   it('trouve un nœud, un lien et sa pastille', () => {
@@ -79,12 +80,12 @@ describe('classifyStroke', () => {
 
 describe('docBounds', () => {
   it('englobe les cercles', () => {
-    expect(docBounds({ version: 1, nodes: [node('a', 0, 0, 10), node('b', 100, 50, 20)], edges: [] })).toEqual({
+    expect(docBounds({ version: 1, nodes: [node('a', 0, 0, 10), node('b', 100, 50, 20)], edges: [], story: emptyStory() })).toEqual({
       minX: -10,
       minY: -10,
       maxX: 120,
       maxY: 70,
     });
-    expect(docBounds({ version: 1, nodes: [], edges: [] })).toBeNull();
+    expect(docBounds({ version: 1, nodes: [], edges: [], story: emptyStory() })).toBeNull();
   });
 });

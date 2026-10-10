@@ -5,7 +5,9 @@
   import { COLOR_KEYS, COLOR_NAMES } from '../theme';
   import Icon from './Icon.svelte';
   import { toasts } from './notify.svelte';
+  import { layout } from './layout.svelte';
   import Segmented from './Segmented.svelte';
+  import { storyUi } from './story.svelte';
 
   // Le document n'est pas profondément réactif : on lit `rev` puis on renvoie une COPIE,
   // sinon $derived (qui compare par référence) ne verrait jamais de changement.
@@ -35,7 +37,12 @@
     return { ...l, steps, negatives: steps.filter((s) => s.polarity === -1).length };
   });
 
-  const visible = $derived(editor.mode === 'edit' ? !!(node || edge || loop) : !!loop);
+  // Masqué pendant le choix des éléments d'une étape, et sur téléphone quand le récit occupe le bas de l'écran.
+  const visible = $derived(
+    !storyUi.picking &&
+      !(storyUi.open && layout.narrow) &&
+      (editor.mode === 'edit' ? !!(node || edge || loop) : editor.mode === 'sim' && !!loop),
+  );
 
   let labelInput: HTMLInputElement | undefined = $state();
 

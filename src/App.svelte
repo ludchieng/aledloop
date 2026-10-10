@@ -7,6 +7,9 @@
   import { sim } from './sim/session.svelte';
   import { THEMES, themeCssVars } from './theme';
   import Inspector from './ui/Inspector.svelte';
+  import PresentBar from './ui/PresentBar.svelte';
+  import StoryPanel from './ui/StoryPanel.svelte';
+  import { presenter, storyUi } from './ui/story.svelte';
   import { prefs } from './ui/prefs.svelte';
   import Toasts from './ui/Toasts.svelte';
   import { toasts } from './ui/notify.svelte';
@@ -51,7 +54,11 @@
       .then((doc) => {
         editor.load(doc);
         canvas.fit();
-        toasts.show('Diagramme partagé ouvert.', { label: 'Revenir au mien', run: () => { editor.undo(); canvas.fit(); } }, 8000);
+        if (doc.story.steps.length > 0) {
+          toasts.show('Diagramme partagé ouvert : il contient un récit.', { label: 'Le présenter', run: () => presenter.start() }, 10000);
+        } else {
+          toasts.show('Diagramme partagé ouvert.', { label: 'Revenir au mien', run: () => { editor.undo(); canvas.fit(); } }, 8000);
+        }
       })
       .catch(() => toasts.show('Ce lien de partage est abîmé : impossible de l’ouvrir.'));
   });
@@ -69,6 +76,22 @@
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
 
+    if (editor.mode === 'present') {
+      if (['ArrowRight', 'ArrowDown', 'PageDown', 'Enter', ' '].includes(e.key)) {
+        e.preventDefault();
+        presenter.next();
+      } else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
+        e.preventDefault();
+        presenter.prev();
+      } else if (e.key === 'Home') {
+        presenter.go(0);
+      } else if (e.key === 'End') {
+        presenter.go(presenter.count - 1);
+      } else if (e.key === 'Escape') {
+        presenter.stop();
+      }
+      return;
+    }
     if (editor.mode === 'sim') {
       if (e.key === 'Escape') sim.stop();
       return;
@@ -92,7 +115,8 @@
       e.preventDefault();
       editor.deleteSelection();
     } else if (e.key === 'Escape') {
-      editor.selection = null;
+      if (storyUi.picking) storyUi.picking = false;
+      else editor.selection = null;
     }
   }
 </script>
@@ -110,10 +134,17 @@
     </div>
   {/if}
 
-  <TopBar onloaded={() => canvas.fit()} />
-  <Inspector />
-  <ZoomControls {zoom} onzoomby={(f) => canvas.zoomBy(f)} onfit={() => canvas.fit()} />
-  <Toolbar />
+  {#if editor.mode === 'present'}
+    <PresentBar />
+  {:else}
+    <TopBar onloaded={() => canvas.fit()} />
+    {#if storyUi.open && editor.mode === 'edit'}
+      <StoryPanel />
+    {/if}
+    <Inspector />
+    <ZoomControls {zoom} onzoomby={(f) => canvas.zoomBy(f)} onfit={() => canvas.fit()} />
+    <Toolbar />
+  {/if}
   <Toasts />
 </main>
 

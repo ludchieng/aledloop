@@ -9,11 +9,11 @@ class SimSession {
   playing = $state(true);
   speed = $state(1);
 
-  start() {
+  start(mode: 'sim' | 'present' = 'sim') {
     editor.selection = null;
     this.engine = new LoopySim(editor.doc);
     this.playing = true;
-    editor.mode = 'sim';
+    editor.mode = mode;
   }
 
   stop() {

@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { editor } from '../model/editor.svelte';
   import { findLoops, type Loop } from '../model/loops';
+  import { framingNodes, hiddenAt, stepFocus } from '../model/story';
+  import type { SysNode } from '../model/types';
   import { sim } from '../sim/session.svelte';
   import { THEMES } from '../theme';
   import { prefs } from '../ui/prefs.svelte';
-  import { Camera } from './camera';
-  import { docBounds, loopLabels, type LoopLabel, type Pt } from './geometry';
+  import { presenter, storyUi } from '../ui/story.svelte';
+  import { Camera, type Margins } from './camera';
+  import { docBounds, loopLabels, nodesBounds, type LoopLabel, type Pt } from './geometry';
   import { Interaction } from './interaction';
   import { render } from './render';
 
@@ -42,17 +45,108 @@
     return key ? (loops().loops.find((l) => l.key === key) ?? null) : null;
   }
 
+  /** Ce que le récit impose à l'affichage : mise en avant de l'étape, éléments pas encore apparus. */
+  function storyView(): { focus: Set<string> | null; hidden: Set<string> | null } {
+    const doc = editor.doc;
+    if (editor.mode === 'present') {
+      const step = doc.story.steps[presenter.index];
+      const focus = step ? stepFocus(doc, step) : null;
+      return { focus: focus?.size ? focus : null, hidden: hiddenAt(doc, presenter.index) };
+    }
+    const step = editor.mode === 'edit' && storyUi.open && storyUi.active ? editor.step(storyUi.active) : undefined;
+    if (step) {
+      const focus = stepFocus(doc, step);
+      // En train de choisir : même vide, on estompe tout, pour voir ce qui reste à toucher.
+      return { focus: focus.size || storyUi.picking ? focus : null, hidden: null };
+    }
+    return { focus: null, hidden: null };
+  }
+
   const interaction = new Interaction({
     editor,
     camera,
     sim: () => sim.engine,
-    loopLabels: () => (prefs.showLoops ? loops().labels : []),
+    loopLabels: () => {
+      if (!prefs.showLoops) return [];
+      const hidden = storyView().hidden;
+      return hidden ? loops().labels.filter((l) => !l.loop.edges.some((id) => hidden.has(id))) : loops().labels;
+    },
+    hidden: () => storyView().hidden,
+    picking: () => (editor.mode === 'edit' && storyUi.open && storyUi.picking ? storyUi.active : null),
     requestRender,
     setCursor: (cursor) => {
       if (canvas) canvas.style.cursor = cursor;
     },
     hint: (message) => onhint?.(message),
   });
+
+  // --- Apparition en fondu des éléments révélés par le récit ---------------------
+
+  const FADE_MS = 600;
+  const appearing = new Map<string, number>();
+  let prevHidden: Set<string> | null = null;
+
+  function fades(hidden: Set<string> | null, now: number): Map<string, number> | null {
+    if (hidden) {
+      // Au lancement de la présentation, tout ce qui est visible apparaît en fondu.
+      const before = prevHidden ?? new Set([...editor.doc.nodes.map((n) => n.id), ...editor.doc.edges.map((e) => e.id)]);
+      for (const id of before) if (!hidden.has(id)) appearing.set(id, now);
+    }
+    prevHidden = hidden;
+    if (appearing.size === 0) return null;
+    const out = new Map<string, number>();
+    for (const [id, t] of appearing) {
+      const k = (now - t) / FADE_MS;
+      if (k >= 1) appearing.delete(id);
+      else out.set(id, k * k * (3 - 2 * k));
+    }
+    return out.size ? out : null;
+  }
+
+  // --- Caméra animée (récit) ---------------------------------------------------------
+
+  /** Une vue : point du monde au centre de l'écran, et zoom. Plus facile à interpoler que le décalage. */
+  type CamView = { cx: number; cy: number; zoom: number };
+  let anim: { from: CamView; to: CamView; t0: number; dur: number } | null = null;
+
+  function currentView(): CamView {
+    const c = camera.toWorld({ x: width / 2, y: height / 2 });
+    return { cx: c.x, cy: c.y, zoom: camera.zoom };
+  }
+
+  function applyView(v: CamView) {
+    camera.zoom = v.zoom;
+    camera.x = width / 2 - v.cx * v.zoom;
+    camera.y = height / 2 - v.cy * v.zoom;
+  }
+
+  /** Cadre des nœuds, en glissant doucement jusqu'à eux. */
+  function frameNodes(nodes: SysNode[], m: Margins, duration = 900) {
+    const box = nodesBounds(nodes);
+    if (!box || !width) return;
+    box.maxY += 44; // courbes d'historique
+    const target = new Camera();
+    target.fit(box, width, height, m);
+    const to = { cx: (width / 2 - target.x) / target.zoom, cy: (height / 2 - target.y) / target.zoom, zoom: target.zoom };
+    anim = { from: currentView(), to, t0: performance.now(), dur: duration };
+    requestRender();
+  }
+
+  function stepAnimation(now: number) {
+    if (!anim) return;
+    const k = Math.min(1, Math.max(0, (now - anim.t0) / anim.dur));
+    const e = k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
+    const { from, to } = anim;
+    applyView({
+      cx: from.cx + (to.cx - from.cx) * e,
+      cy: from.cy + (to.cy - from.cy) * e,
+      // Interpolation du zoom en logarithme : le grossissement paraît régulier.
+      zoom: Math.exp(Math.log(from.zoom) + (Math.log(to.zoom) - Math.log(from.zoom)) * e),
+    });
+    if (k >= 1) anim = null;
+  }
+
+  // --- Rendu -----------------------------------------------------------------------
 
   /** Rendu à la demande : au plus une image par rafraîchissement d'écran. */
   function requestRender() {
@@ -65,6 +159,10 @@
     lastTime = now;
     if (!ctx) return;
     sim.tick(dt);
+    stepAnimation(now);
+    const story = storyView();
+    const loop = loopFocus();
+    const fade = fades(story.hidden, now);
     render({ ctx, width, height, dpr, camera, theme: THEMES[prefs.theme] }, editor.doc, {
       selection: editor.selection,
       hover: interaction.hover,
@@ -73,33 +171,47 @@
       erasing: interaction.erasing,
       pulseHover: interaction.pulseHover,
       loopLabels: prefs.showLoops ? loops().labels : null,
-      loopFocus: loopFocus(),
+      focus: loop ? new Set([...loop.nodes, ...loop.edges]) : story.focus,
+      focusLoop: loop?.key ?? null,
+      hidden: story.hidden,
+      fade,
       sim: sim.engine,
     });
     if (camera.zoom !== lastZoom) {
       lastZoom = camera.zoom;
       onzoom?.(camera.zoom);
     }
-    // En simulation, on anime en continu ; sinon on attend le prochain changement.
-    if (editor.mode === 'sim') requestRender();
+    // En simulation ou pendant une animation, on dessine en continu ; sinon on attend le prochain changement.
+    if (editor.simulating || anim || fade) requestRender();
     else lastTime = 0;
   }
 
+  /** Marges de l'interface : barres du haut et du bas en édition, carte de narration en présentation. */
+  function margins(): Margins {
+    const side = Math.min(60, width * 0.06);
+    if (editor.mode === 'present') {
+      return { top: Math.min(60, height * 0.08), bottom: Math.min(270, height * 0.38), left: side, right: side };
+    }
+    const m = { top: Math.min(90, height * 0.12), bottom: Math.min(120, height * 0.16), left: side, right: side };
+    // Le panneau du récit occupe la gauche (bureau) ou le bas (téléphone).
+    if (editor.mode === 'edit' && storyUi.open) {
+      if (width > 700) m.left = 370;
+      else m.bottom = height * 0.48 + 90;
+    }
+    return m;
+  }
+
   export function fit() {
+    anim = null;
     const box = docBounds(editor.doc);
     // Place sous les galets pour les courbes d'historique de la simulation.
     if (box) box.maxY += 44;
-    const side = Math.min(60, width * 0.06);
-    camera.fit(box, width, height, {
-      top: Math.min(90, height * 0.12),
-      bottom: Math.min(120, height * 0.16),
-      left: side,
-      right: side,
-    });
+    camera.fit(box, width, height, margins());
     requestRender();
   }
 
   export function zoomBy(factor: number) {
+    anim = null;
     camera.zoomAt({ x: width / 2, y: height / 2 }, factor);
     requestRender();
   }
@@ -114,6 +226,7 @@
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     // La « capture » garantit qu'on reçoit la suite du geste même si le doigt sort du canvas.
     canvas.setPointerCapture(e.pointerId);
+    anim = null; // l'utilisateur reprend la main sur la vue
     interaction.down(e, local(e));
   }
 
@@ -121,7 +234,8 @@
     e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.code === 'Space' && !isTyping(e)) {
+    // En présentation, Espace fait avancer le récit (géré par App).
+    if (e.code === 'Space' && !isTyping(e) && editor.mode !== 'present') {
       e.preventDefault();
       if (!interaction.spaceDown) {
         interaction.spaceDown = true;
@@ -162,6 +276,7 @@
     // La molette doit pouvoir appeler preventDefault (sinon la page zoome) : écouteur non passif.
     const onwheel = (e: WheelEvent) => {
       e.preventDefault();
+      anim = null;
       interaction.wheel(e, local(e));
     };
     canvas.addEventListener('wheel', onwheel, { passive: false });
@@ -182,7 +297,36 @@
     void editor.mode;
     void prefs.theme;
     void prefs.showLoops;
+    void storyUi.open;
+    void storyUi.active;
+    void storyUi.picking;
     requestRender();
+  });
+
+  // Ouvrir ou fermer le récit : on recadre selon la place disponible.
+  $effect(() => {
+    void storyUi.open;
+    untrack(() => {
+      if (editor.mode !== 'present' && width) fit();
+    });
+  });
+
+  // En sortant d'une présentation, on retrouve une vue d'ensemble.
+  let previousMode = editor.mode;
+  $effect(() => {
+    const mode = editor.mode;
+    if (previousMode === 'present' && mode !== 'present') untrack(fit);
+    previousMode = mode;
+  });
+
+  // Présentation : à chaque étape, la vue glisse vers les éléments concernés.
+  $effect(() => {
+    if (editor.mode !== 'present') {
+      prevHidden = null;
+      appearing.clear();
+      return;
+    }
+    frameNodes(framingNodes(editor.doc, presenter.index), margins());
   });
 
   // L'inspecteur occupe le bas de l'écran (téléphone) ou la droite (bureau) :
@@ -207,6 +351,7 @@
   $effect(() => {
     void editor.tool;
     void editor.mode;
+    void storyUi.picking;
     interaction.updateCursor();
   });
 </script>

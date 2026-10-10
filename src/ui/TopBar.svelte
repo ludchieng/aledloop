@@ -7,6 +7,7 @@
   import Icon from './Icon.svelte';
   import { prefs } from './prefs.svelte';
   import { toasts } from './notify.svelte';
+  import { storyUi } from './story.svelte';
 
   let { onloaded }: { onloaded: () => void } = $props();
 
@@ -15,7 +16,7 @@
 
   /** Remplace le document en restant annulable, avec un toast « Annuler ». */
   function replaceDoc(doc: Doc, message: string) {
-    if (editor.mode === 'sim') sim.stop();
+    if (editor.simulating) sim.stop();
     editor.load(doc);
     onloaded();
     toasts.show(message, { label: 'Annuler', run: () => { editor.undo(); onloaded(); } });
@@ -95,6 +96,15 @@
         </ul>
       {/if}
     </div>
+    <button
+      class="btn"
+      class:active={storyUi.open}
+      aria-pressed={storyUi.open}
+      onclick={() => storyUi.toggle()}
+      title="Raconter le diagramme étape par étape"
+    >
+      <Icon name="story" size={19} /><span class="label">Récit</span>
+    </button>
     <span class="sep"></span>
     <button class="btn" onclick={newDoc} title="Nouveau diagramme"><Icon name="file" size={19} /><span class="label">Nouveau</span></button>
     <button class="btn" onclick={() => fileInput.click()} title="Ouvrir un fichier .json"><Icon name="folder" size={19} /><span class="label">Ouvrir</span></button>

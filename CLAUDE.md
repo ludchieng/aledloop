@@ -59,12 +59,12 @@ Scaffold Vite + Svelte 5 + TS. Canvas avec zoom et déplacement (molette, pincem
 - Outil Gomme : passer sur les éléments les supprime. Ils s'estompent pendant le tracé et sont effacés au relâchement, en une seule étape d'annulation.
 - Liens + / − : pastille au milieu du lien, un tap l'inverse. Boutons ▲▼, impulsions animées, lecture/pause, vitesse.
 
-**Phase 2 : Loopy+** ← *en cours : tout est fait sauf le mode présentation*
+**Phase 2 : Loopy+** ✅
 - **Détection automatique des boucles**, étiquetées R (renforçante) ou B (équilibrante) : un nombre pair de liens − donne R, impair donne B (cycles élémentaires, algorithme de Johnson). Mise en évidence au survol.
 - Paramètres de lien : poids et **retard**.
 - Paramètres de nœud : seuil, accumulation puis largage, saturation, retour progressif à l'équilibre, **irréversibilité** (verrouillage une fois le seuil franchi).
 - Petite courbe d'historique sous chaque nœud.
-- **Mode présentation** : récit pas à pas avec mise en évidence des éléments. ← *prochaine étape*
+- **Mode présentation** : récit pas à pas avec mise en évidence des éléments. Le récit (`Doc.story`) est enregistré dans le document et voyage avec le lien de partage. Chaque étape a un texte (`**gras**`), des éléments mis en avant et une impulsion facultative. Option « construire le diagramme au fil du récit ».
 - Modèles d'exemple : proies/prédateurs, albédo, panique bancaire…
 
 Sémantique retenue pour le moteur causal (`src/sim/loopy.ts`) :
@@ -74,7 +74,7 @@ Sémantique retenue pour le moteur causal (`src/sim/loopy.ts`) :
 - Largage : le nœud retient tout sans transmettre. Au seuil, il relâche une impulsion par cran accumulé et retombe à son niveau de départ.
 - Retard : la durée de trajet est multipliée par 1, 2,5 ou 5. Retour à l'équilibre : décroissance exponentielle (τ = 6 s ou 2 s), silencieuse (n'émet pas d'impulsion).
 
-**Phase 3 : stocks-flux**
+**Phase 3 : stocks-flux** ← *prochaine étape (prévoir une séance de cadrage)*
 Stocks, flux, variables, liens d'information, éditeur d'équations, intégrateur Euler/RK4, panneau de courbes, curseurs de paramètres en direct.
 
 **Phase 4 : World3**

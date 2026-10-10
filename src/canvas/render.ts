@@ -1,5 +1,4 @@
 import type { Selection } from '../model/editor.svelte';
-import type { Loop } from '../model/loops';
 import type { Doc, SysEdge, SysNode } from '../model/types';
 import { HISTORY_LEN, type LoopySim } from '../sim/loopy';
 import type { Theme } from '../theme';
@@ -34,8 +33,14 @@ export interface Overlay {
   pulseHover: { id: string; delta: 1 | -1 } | null;
   /** Étiquettes R / B à dessiner (null : masquées). */
   loopLabels: LoopLabel[] | null;
-  /** Boucle mise en évidence (survolée ou sélectionnée) : le reste s'estompe. */
-  loopFocus: Loop | null;
+  /** Éléments mis en avant (boucle survolée, étape du récit…) : le reste s'estompe. */
+  focus: Set<string> | null;
+  /** Boucle mise en évidence : ses liens ont un halo, son étiquette aussi. */
+  focusLoop: string | null;
+  /** Éléments pas encore apparus (récit construit pas à pas) : non dessinés. */
+  hidden: Set<string> | null;
+  /** Éléments en train d'apparaître : opacité dans [0, 1]. */
+  fade: Map<string, number> | null;
   sim: LoopySim | null;
 }
 
@@ -64,15 +69,18 @@ export function render(view: View, doc: Doc, o: Overlay) {
   const byId = nodeById(doc);
   const geoms = new Map<string, EdgeGeom>();
   for (const e of doc.edges) geoms.set(e.id, edgeGeom(byId.get(e.from)!, byId.get(e.to)!, e.bend));
-  const focusNodes = new Set(o.loopFocus?.nodes);
-  const focusEdges = new Set(o.loopFocus?.edges);
-  const alpha = (id: string, inFocus: Set<string>) => (o.erasing.has(id) ? 0.2 : o.loopFocus && !inFocus.has(id) ? DIMMED : 1);
+  const hidden = o.hidden;
+  const isHidden = (id: string) => !!hidden?.has(id);
+  const loopEdges = new Set(o.focusLoop ? o.focusLoop.split('|') : []);
+  const alpha = (id: string) =>
+    (o.erasing.has(id) ? 0.2 : o.focus && !o.focus.has(id) ? DIMMED : 1) * (o.fade?.get(id) ?? 1);
 
   // Liens
   for (const e of doc.edges) {
-    const selected = (o.selection?.kind === 'edge' && o.selection.id === e.id) || focusEdges.has(e.id);
+    if (isHidden(e.id) || isHidden(e.from) || isHidden(e.to)) continue;
+    const selected = (o.selection?.kind === 'edge' && o.selection.id === e.id) || loopEdges.has(e.id);
     const hovered = o.hover?.id === e.id && (o.hover.kind === 'edge' || o.hover.kind === 'badge');
-    ctx.globalAlpha = alpha(e.id, focusEdges);
+    ctx.globalAlpha = alpha(e.id);
     drawEdge(view, geoms.get(e.id)!, e, selected, hovered, o.hover?.kind === 'badge' && o.hover.id === e.id);
   }
   ctx.globalAlpha = 1;
@@ -82,8 +90,8 @@ export function render(view: View, doc: Doc, o: Overlay) {
     for (const s of o.sim.signals) {
       const g = geoms.get(s.edge.id);
       const from = byId.get(s.edge.from);
-      if (!g || !from || s.t < 0) continue;
-      ctx.globalAlpha = alpha(s.edge.id, focusEdges);
+      if (!g || !from || s.t < 0 || isHidden(s.edge.id)) continue;
+      ctx.globalAlpha = alpha(s.edge.id);
       drawSignal(view, g, s.t, s.delta, from);
     }
     ctx.globalAlpha = 1;
@@ -91,9 +99,10 @@ export function render(view: View, doc: Doc, o: Overlay) {
 
   // Nœuds
   for (const n of doc.nodes) {
+    if (isHidden(n.id)) continue;
     const level = o.sim ? o.sim.level(n.id) : n.causal.init;
     const hit = o.sim?.hits.get(n.id);
-    ctx.globalAlpha = alpha(n.id, focusNodes);
+    ctx.globalAlpha = alpha(n.id);
     drawNode(view, n, level, {
       selected: o.selection?.kind === 'node' && o.selection.id === n.id,
       hovered: (o.hover?.kind === 'node' && o.hover.id === n.id) || o.linkTarget === n.id,
@@ -109,8 +118,10 @@ export function render(view: View, doc: Doc, o: Overlay) {
   // Étiquettes de boucle, par-dessus tout
   if (o.loopLabels) {
     for (const l of o.loopLabels) {
-      const focused = o.loopFocus?.key === l.loop.key;
-      ctx.globalAlpha = o.loopFocus && !focused ? 0.35 : 1;
+      if (l.loop.edges.some(isHidden)) continue;
+      const focused = o.focusLoop === l.loop.key;
+      const inFocus = !o.focus || l.loop.edges.every((id) => o.focus!.has(id));
+      ctx.globalAlpha = (focused || inFocus ? 1 : 0.35) * Math.min(...l.loop.edges.map((id) => o.fade?.get(id) ?? 1));
       drawLoopLabel(view, l, focused);
     }
     ctx.globalAlpha = 1;

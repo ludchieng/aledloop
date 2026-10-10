@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from './examples';
 import { findLoops } from './loops';
-import { defaultCausal, type Doc, type Polarity } from './types';
+import { defaultCausal, emptyStory, type Doc, type Polarity } from './types';
 
 function graph(nodes: string, edges: [string, string, Polarity?][]): Doc {
   return {
     version: 1,
     nodes: [...nodes].map((id) => ({ id, x: 0, y: 0, r: 40, label: id, color: 'sage', causal: defaultCausal() })),
     edges: edges.map(([from, to, polarity = 1]) => ({ id: from + to, from, to, polarity, weight: 1, delay: 0, bend: 0 })),
+    story: emptyStory(),
   };
 }
 

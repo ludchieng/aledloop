@@ -26,6 +26,13 @@
     close: 'M18 6 6 18M6 6l12 12',
     chevron: 'm6 9 6 6 6-6',
     loop: 'M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3',
+    prev: 'm15 18-6-6 6-6',
+    next: 'm9 18 6-6-6-6',
+    up: 'm18 15-6-6-6 6',
+    maximize: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3',
+    story: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2ZM8 8h8M8 12h5',
+    present: 'M2 3h20M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3M7 21l5-5 5 5',
+    target: 'M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8',
   } as const;
 
   export type IconName = keyof typeof PATHS;

@@ -50,10 +50,28 @@ export interface SysEdge {
   bend: number;
 }
 
+/** Une étape du récit (mode présentation). */
+export interface StoryStep {
+  id: string;
+  /** Narration. `**gras**` est mis en valeur. */
+  text: string;
+  /** Éléments mis en avant (nœuds et liens) ; le reste s'estompe. Vide : tout est visible. */
+  focus: string[];
+  /** Action jouée à l'arrivée sur l'étape : une impulsion sur un nœud. */
+  pulse: { node: string; delta: 1 | -1 } | null;
+}
+
+export interface Story {
+  steps: StoryStep[];
+  /** Construire le diagramme au fil du récit : un élément n'apparaît qu'une fois mis en avant. */
+  reveal: boolean;
+}
+
 export interface Doc {
   version: 1;
   nodes: SysNode[];
   edges: SysEdge[];
+  story: Story;
 }
 
 export const NODE_RADIUS = 48;
@@ -65,8 +83,12 @@ export function defaultCausal(): CausalProps {
   return { init: 0.5, thresholdMode: 'none', threshold: 0.8, relax: 0, saturate: false };
 }
 
+export function emptyStory(): Story {
+  return { steps: [], reveal: false };
+}
+
 export function emptyDoc(): Doc {
-  return { version: 1, nodes: [], edges: [] };
+  return { version: 1, nodes: [], edges: [], story: emptyStory() };
 }
 
 let counter = 0;

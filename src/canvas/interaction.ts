@@ -30,6 +30,7 @@ type Gesture =
   | { kind: 'bendEdge'; id: string; start: Pt; moved: boolean }
   | { kind: 'tapBadge'; id: string; start: Pt; moved: boolean }
   | { kind: 'tapLoop'; id: string; start: Pt; moved: boolean }
+  | { kind: 'tapPick'; step: string; ids: string[]; start: Pt; moved: boolean }
   | { kind: 'pan'; last: Pt; start: Pt; moved: boolean; deselect: boolean }
   | { kind: 'pinch'; mid: Pt; spread: number }
   | { kind: 'ignore' };
@@ -40,6 +41,10 @@ export interface Host {
   sim(): LoopySim | null;
   /** Étiquettes R / B visibles (vide si masquées). */
   loopLabels(): LoopLabel[];
+  /** Éléments pas encore apparus dans le récit (présentation). */
+  hidden(): Set<string> | null;
+  /** Étape du récit dont on choisit les éléments en les touchant (sinon null). */
+  picking(): string | null;
   requestRender(): void;
   setCursor(cursor: string): void;
   hint(message: string): void;
@@ -47,7 +52,7 @@ export interface Host {
 
 const DOUBLE_TAP_MS = 350;
 
-export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLabels' | 'loopFocus'> {
+export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trail' | 'erasing' | 'pulseHover'> {
   hover: Hit = null;
   linkTarget: string | null = null;
   trail: Overlay['trail'] = null;
@@ -107,14 +112,26 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
     const w = this.world(p);
     const pad = this.slop / this.host.camera.zoom;
 
-    const loop = editor.tool !== 'eraser' || editor.mode === 'sim' ? loopAt(this.host.loopLabels(), w, pad) : null;
+    // Choix des éléments d'une étape du récit : un tap ajoute ou retire l'élément touché.
+    const pickStep = this.host.picking();
+    if (pickStep) {
+      const label = loopAt(this.host.loopLabels(), w, pad);
+      const hit = label ? null : hitTest(editor.doc, w, pad);
+      const ids = label ? [...label.loop.nodes, ...label.loop.edges] : hit && hit.kind !== 'loop' ? [hit.id] : [];
+      if (ids.length) this.g = { kind: 'tapPick', step: pickStep, ids, start: p, moved: false };
+      else this.startPan(p, false);
+      this.host.requestRender();
+      return;
+    }
+
+    const loop = editor.tool !== 'eraser' || editor.simulating ? loopAt(this.host.loopLabels(), w, pad) : null;
     if (loop) {
       this.g = { kind: 'tapLoop', id: loop.loop.key, start: p, moved: false };
       return;
     }
 
-    if (editor.mode === 'sim') {
-      const node = nodeAt(editor.doc, w, pad / 2);
+    if (editor.simulating) {
+      const node = this.visibleNodeAt(w, pad / 2);
       const sim = this.host.sim();
       if (node && sim) {
         sim.pulse(node.id, w.y < node.y ? 1 : -1);
@@ -237,6 +254,7 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
       }
       case 'tapBadge':
       case 'tapLoop':
+      case 'tapPick':
         g.moved ||= this.movedFrom(g.start, p);
         break;
     }
@@ -285,6 +303,9 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
           const same = editor.selection?.kind === 'loop' && editor.selection.id === g.id;
           editor.selection = same ? null : { kind: 'loop', id: g.id };
         }
+        break;
+      case 'tapPick':
+        if (!g.moved) editor.toggleFocus(g.step, g.ids);
         break;
       case 'pan':
         if (!g.moved && g.deselect) editor.selection = null;
@@ -408,6 +429,12 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
     }
   }
 
+  /** Nœud sous le point, en ignorant ceux que le récit n'a pas encore fait apparaître. */
+  private visibleNodeAt(p: Pt, pad = 0) {
+    const node = nodeAt(this.host.editor.doc, p, pad);
+    return node && !this.host.hidden()?.has(node.id) ? node : null;
+  }
+
   // --- Survol (souris) -----------------------------------------------------------
 
   private updateHover(p: Pt) {
@@ -418,8 +445,8 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
     const loop = loopAt(this.host.loopLabels(), w, 2 / camera.zoom);
     if (loop) {
       hover = { kind: 'loop', id: loop.loop.key };
-    } else if (editor.mode === 'sim') {
-      const node = nodeAt(editor.doc, w);
+    } else if (editor.simulating) {
+      const node = this.visibleNodeAt(w);
       if (node) pulse = { id: node.id, delta: w.y < node.y ? 1 : -1 };
     } else {
       hover = hitTest(editor.doc, w, this.slop / camera.zoom);
@@ -439,7 +466,8 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLab
     let cursor = 'default';
     if (g.kind === 'pan' || g.kind === 'dragNode' || g.kind === 'bendEdge') cursor = 'grabbing';
     else if (this.spaceDown) cursor = 'grab';
-    else if (editor.mode === 'sim') cursor = this.pulseHover || this.hover ? 'pointer' : 'grab';
+    else if (editor.simulating) cursor = this.pulseHover || this.hover ? 'pointer' : 'grab';
+    else if (this.host.picking()) cursor = this.hover ? 'pointer' : 'grab';
     else if (this.hover?.kind === 'badge' || this.hover?.kind === 'loop') cursor = 'pointer';
     else if (editor.tool === 'pen') cursor = 'crosshair';
     else if (editor.tool === 'hand') cursor = 'grab';

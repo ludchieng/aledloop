@@ -7,6 +7,9 @@ import {
   type CausalProps,
   type Doc,
   type SysEdge,
+  emptyStory,
+  type Story,
+  type StoryStep,
   type SysNode,
   type Weight,
 } from './types';
@@ -73,7 +76,27 @@ export function parseDoc(raw: unknown): Doc {
       bend: num(e.bend, 0),
     });
   }
-  return { version: 1, nodes, edges };
+  return { version: 1, nodes, edges, story: parseStory(raw.story, ids, edgeIds) };
+}
+
+/** Le récit ne garde que des références à des éléments qui existent. */
+function parseStory(raw: unknown, nodeIds: Set<string>, edgeIds: Set<string>): Story {
+  if (!isObj(raw) || !Array.isArray(raw.steps)) return emptyStory();
+  const steps: StoryStep[] = [];
+  const stepIds = new Set<string>();
+  for (const st of raw.steps) {
+    if (!isObj(st) || typeof st.id !== 'string' || stepIds.has(st.id)) continue;
+    stepIds.add(st.id);
+    const focus = Array.isArray(st.focus)
+      ? [...new Set(st.focus.filter((id): id is string => typeof id === 'string' && (nodeIds.has(id) || edgeIds.has(id))))]
+      : [];
+    const pulse =
+      isObj(st.pulse) && typeof st.pulse.node === 'string' && nodeIds.has(st.pulse.node)
+        ? { node: st.pulse.node, delta: st.pulse.delta === -1 ? (-1 as const) : (1 as const) }
+        : null;
+    steps.push({ id: st.id, text: typeof st.text === 'string' ? st.text.slice(0, 2000) : '', focus, pulse });
+  }
+  return { steps, reveal: raw.reveal === true };
 }
 
 // --- localStorage --------------------------------------------------------
@@ -134,6 +157,7 @@ function compactDoc(doc: Doc): Doc {
       causal: { ...n.causal, init: round2(n.causal.init), threshold: round2(n.causal.threshold) },
     })),
     edges: doc.edges.map((e) => ({ ...e, bend: round(e.bend) })),
+    story: doc.story,
   };
 }
 
