@@ -1,11 +1,24 @@
 import type { Selection } from '../model/editor.svelte';
-import type { Doc, SysNode } from '../model/types';
-import type { LoopySim } from '../sim/loopy';
+import type { Loop } from '../model/loops';
+import type { Doc, SysEdge, SysNode } from '../model/types';
+import { HISTORY_LEN, type LoopySim } from '../sim/loopy';
 import type { Theme } from '../theme';
 import type { Camera } from './camera';
-import { BADGE_RADIUS, edgeGeom, nodeById, quadPoint, quadTangent, type EdgeGeom, type Hit, type Pt } from './geometry';
+import {
+  BADGE_RADIUS,
+  edgeGeom,
+  LOOP_RADIUS,
+  nodeById,
+  quadPoint,
+  quadTangent,
+  type EdgeGeom,
+  type Hit,
+  type LoopLabel,
+  type Pt,
+} from './geometry';
 
 export const FONT = '"Nunito Variable", Nunito, system-ui, sans-serif';
+export const TITLE_FONT = '"Fraunces Variable", Fraunces, Georgia, serif';
 
 export interface Overlay {
   selection: Selection;
@@ -19,6 +32,10 @@ export interface Overlay {
   erasing: Set<string>;
   /** En simulation : moitié de nœud survolée (▲ en haut, ▼ en bas). */
   pulseHover: { id: string; delta: 1 | -1 } | null;
+  /** Étiquettes R / B à dessiner (null : masquées). */
+  loopLabels: LoopLabel[] | null;
+  /** Boucle mise en évidence (survolée ou sélectionnée) : le reste s'estompe. */
+  loopFocus: Loop | null;
   sim: LoopySim | null;
 }
 
@@ -30,6 +47,10 @@ export interface View {
   camera: Camera;
   theme: Theme;
 }
+
+/** Opacité des éléments hors de la boucle mise en évidence. */
+const DIMMED = 0.22;
+const WIDTHS: Record<number, number> = { 0.5: 2.5, 1: 4, 2: 6.5 };
 
 export function render(view: View, doc: Doc, o: Overlay) {
   const { ctx, width, height, dpr, camera } = view;
@@ -43,14 +64,16 @@ export function render(view: View, doc: Doc, o: Overlay) {
   const byId = nodeById(doc);
   const geoms = new Map<string, EdgeGeom>();
   for (const e of doc.edges) geoms.set(e.id, edgeGeom(byId.get(e.from)!, byId.get(e.to)!, e.bend));
+  const focusNodes = new Set(o.loopFocus?.nodes);
+  const focusEdges = new Set(o.loopFocus?.edges);
+  const alpha = (id: string, inFocus: Set<string>) => (o.erasing.has(id) ? 0.2 : o.loopFocus && !inFocus.has(id) ? DIMMED : 1);
 
   // Liens
   for (const e of doc.edges) {
-    const g = geoms.get(e.id)!;
-    const selected = o.selection?.kind === 'edge' && o.selection.id === e.id;
+    const selected = (o.selection?.kind === 'edge' && o.selection.id === e.id) || focusEdges.has(e.id);
     const hovered = o.hover?.id === e.id && (o.hover.kind === 'edge' || o.hover.kind === 'badge');
-    ctx.globalAlpha = o.erasing.has(e.id) ? 0.2 : 1;
-    drawEdge(view, g, e.polarity, selected, hovered, o.hover?.kind === 'badge' && o.hover.id === e.id);
+    ctx.globalAlpha = alpha(e.id, focusEdges);
+    drawEdge(view, geoms.get(e.id)!, e, selected, hovered, o.hover?.kind === 'badge' && o.hover.id === e.id);
   }
   ctx.globalAlpha = 1;
 
@@ -59,23 +82,39 @@ export function render(view: View, doc: Doc, o: Overlay) {
     for (const s of o.sim.signals) {
       const g = geoms.get(s.edge.id);
       const from = byId.get(s.edge.from);
-      if (g && from) drawSignal(view, g, s.t, s.delta, from);
+      if (!g || !from || s.t < 0) continue;
+      ctx.globalAlpha = alpha(s.edge.id, focusEdges);
+      drawSignal(view, g, s.t, s.delta, from);
     }
+    ctx.globalAlpha = 1;
   }
 
   // Nœuds
   for (const n of doc.nodes) {
-    const level = o.sim ? o.sim.level(n.id) : n.init;
+    const level = o.sim ? o.sim.level(n.id) : n.causal.init;
     const hit = o.sim?.hits.get(n.id);
-    ctx.globalAlpha = o.erasing.has(n.id) ? 0.2 : 1;
+    ctx.globalAlpha = alpha(n.id, focusNodes);
     drawNode(view, n, level, {
       selected: o.selection?.kind === 'node' && o.selection.id === n.id,
       hovered: (o.hover?.kind === 'node' && o.hover.id === n.id) || o.linkTarget === n.id,
-      bounce: hit ? bounce(hit.age) : 0,
+      bounce: hit ? bounce(hit.age) * (hit.event ? 2.2 : 1) : 0,
       pulse: o.sim ? (o.pulseHover?.id === n.id ? o.pulseHover.delta : 0) : null,
+      tipped: o.sim?.tipped.has(n.id) ?? false,
     });
+    const history = o.sim?.history.get(n.id);
+    if (history) drawHistory(view, n, history);
   }
   ctx.globalAlpha = 1;
+
+  // Étiquettes de boucle, par-dessus tout
+  if (o.loopLabels) {
+    for (const l of o.loopLabels) {
+      const focused = o.loopFocus?.key === l.loop.key;
+      ctx.globalAlpha = o.loopFocus && !focused ? 0.35 : 1;
+      drawLoopLabel(view, l, focused);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   if (o.trail) drawTrail(view, o.trail.points, o.trail.kind);
 }
@@ -129,31 +168,33 @@ function subCurve(ctx: CanvasRenderingContext2D, g: EdgeGeom, t0: number, t1: nu
   ctx.quadraticCurveTo(cx, cy, end.x, end.y);
 }
 
-function drawEdge(view: View, g: EdgeGeom, polarity: 1 | -1, selected: boolean, hovered: boolean, badgeHovered: boolean) {
+function drawEdge(view: View, g: EdgeGeom, e: SysEdge, selected: boolean, hovered: boolean, badgeHovered: boolean) {
   const { ctx, theme } = view;
   if (g.t1 <= g.t0) return; // nœuds superposés
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  const width = WIDTHS[e.weight] ?? 4;
 
   if (selected || hovered) {
+    const a = ctx.globalAlpha;
     ctx.strokeStyle = theme.selection;
-    ctx.globalAlpha *= selected ? 0.45 : 0.22;
-    ctx.lineWidth = 13;
+    ctx.globalAlpha = a * (selected ? 0.45 : 0.22);
+    ctx.lineWidth = width + 9;
     ctx.beginPath();
     subCurve(ctx, g, g.t0, g.t1);
     ctx.stroke();
-    ctx.globalAlpha /= selected ? 0.45 : 0.22;
+    ctx.globalAlpha = a;
   }
 
   const tip = quadPoint(g.p0, g.c, g.p1, g.t1);
   const dir = quadTangent(g.p0, g.c, g.p1, g.t1);
-  const len = 15;
-  const half = 8;
+  const len = 13 + width / 2;
+  const half = 6 + width / 2;
   // La ligne s'arrête à la base de la flèche, pour une pointe nette.
   const base = { x: tip.x - dir.x * len * 0.8, y: tip.y - dir.y * len * 0.8 };
 
   ctx.strokeStyle = theme.inkSoft;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = width;
   ctx.beginPath();
   const tBase = g.t1 - (g.t1 - g.t0) * Math.min(0.5, (len * 0.8) / Math.max(1, approxLength(g)));
   subCurve(ctx, g, g.t0, tBase);
@@ -169,11 +210,15 @@ function drawEdge(view: View, g: EdgeGeom, polarity: 1 | -1, selected: boolean, 
   ctx.stroke();
   ctx.fill();
 
+  // Retard : deux traits en travers du lien (la notation classique des diagrammes causaux).
+  if (e.delay > 0) drawDelayMark(ctx, g, 0.72, width, theme.inkSoft);
+  if (e.delay > 1) drawDelayMark(ctx, g, 0.3, width, theme.inkSoft);
+
   // Pastille + / −
-  const color = polarity === 1 ? theme.positive : theme.negative;
+  const color = e.polarity === 1 ? theme.positive : theme.negative;
   const r = BADGE_RADIUS * (badgeHovered ? 1.15 : 1);
   setShadow(view, 6, 1.5);
-  ctx.fillStyle = view.theme.card;
+  ctx.fillStyle = theme.card;
   ctx.beginPath();
   ctx.arc(g.mid.x, g.mid.y, r, 0, Math.PI * 2);
   ctx.fill();
@@ -181,7 +226,25 @@ function drawEdge(view: View, g: EdgeGeom, polarity: 1 | -1, selected: boolean, 
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   ctx.stroke();
-  drawSign(ctx, g.mid, polarity, r * 0.5, color);
+  drawSign(ctx, g.mid, e.polarity, r * 0.5, color);
+}
+
+function drawDelayMark(ctx: CanvasRenderingContext2D, g: EdgeGeom, at: number, width: number, color: string) {
+  const t = g.t0 + (g.t1 - g.t0) * at;
+  const p = quadPoint(g.p0, g.c, g.p1, t);
+  const d = quadTangent(g.p0, g.c, g.p1, t);
+  const half = 8 + width;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (const off of [-3.5, 3.5]) {
+    const cx = p.x + d.x * off;
+    const cy = p.y + d.y * off;
+    ctx.moveTo(cx - d.y * half, cy + d.x * half);
+    ctx.lineTo(cx + d.y * half, cy - d.x * half);
+  }
+  ctx.stroke();
 }
 
 function approxLength(g: EdgeGeom): number {
@@ -216,6 +279,7 @@ interface NodeState {
   bounce: number;
   /** null hors simulation ; sinon moitié survolée (1 : ▲, −1 : ▼, 0 : aucune). */
   pulse: number | null;
+  tipped: boolean;
 }
 
 function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
@@ -241,17 +305,30 @@ function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
   ctx.fill();
   clearShadow(ctx);
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+  ctx.clip();
   // Niveau : le galet se remplit par le bas
   if (level > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-    ctx.clip();
     ctx.fillStyle = sw.level;
     const top = n.y + r - 2 * r * level;
     ctx.fillRect(n.x - r, top, 2 * r, 2 * r * level + 1);
-    ctx.restore();
   }
+  // Seuil : une graduation en pointillés, comme sur un verre doseur
+  const c = n.causal;
+  if (c.thresholdMode !== 'none') {
+    const y = n.y + r - 2 * r * c.threshold;
+    ctx.strokeStyle = c.thresholdMode === 'tip' ? theme.negative : theme.swatches.ochre.stroke;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(n.x - r, y);
+    ctx.lineTo(n.x + r, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
 
   // Reflet en haut à gauche
   const grad = ctx.createRadialGradient(n.x - r * 0.38, n.y - r * 0.45, r * 0.05, n.x - r * 0.3, n.y - r * 0.35, r * 0.95);
@@ -262,8 +339,8 @@ function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
   ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = sw.stroke;
-  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = s.tipped ? theme.negative : sw.stroke;
+  ctx.lineWidth = s.tipped ? 5 : 3.5;
   ctx.stroke();
 
   // Boutons ▲ ▼ en simulation : moitié haute / moitié basse du galet
@@ -273,6 +350,29 @@ function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
   }
 
   if (n.label) drawLabel(ctx, n, r, sw.fill, theme.ink);
+  if (s.tipped) drawLock(view, n.x + r * 0.72, n.y - r * 0.72);
+}
+
+/** Petit cadenas : l'élément a basculé, c'est irréversible. */
+function drawLock(view: View, x: number, y: number) {
+  const { ctx, theme } = view;
+  setShadow(view, 5, 1.5);
+  ctx.fillStyle = theme.card;
+  ctx.beginPath();
+  ctx.arc(x, y, 13, 0, Math.PI * 2);
+  ctx.fill();
+  clearShadow(ctx);
+  ctx.strokeStyle = theme.negative;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.fillStyle = theme.negative;
+  ctx.beginPath();
+  ctx.roundRect(x - 5.5, y - 1.5, 11, 8, 2);
+  ctx.fill();
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 3.6, Math.PI, 0);
+  ctx.stroke();
 }
 
 function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, dir: number, color: string, alpha: number) {
@@ -309,12 +409,105 @@ function drawLabel(ctx: CanvasRenderingContext2D, n: SysNode, r: number, halo: s
   ctx.fillText(n.label, n.x, n.y);
 }
 
+/** Petite courbe des dernières secondes, sous le galet. */
+function drawHistory(view: View, n: SysNode, values: number[]) {
+  const { ctx, theme } = view;
+  const sw = theme.swatches[n.color];
+  const w = Math.max(70, n.r * 1.5);
+  const h = 24;
+  const x0 = n.x - w / 2;
+  const y0 = n.y + n.r + 12;
+  const pad = 3;
+  const yOf = (v: number) => y0 + h - pad - v * (h - 2 * pad);
+
+  setShadow(view, 6, 1.5);
+  ctx.fillStyle = theme.card;
+  ctx.beginPath();
+  ctx.roundRect(x0, y0, w, h, 7);
+  ctx.fill();
+  clearShadow(ctx);
+
+  // Repère : niveau de départ
+  ctx.strokeStyle = theme.grid;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x0 + 4, yOf(n.causal.init));
+  ctx.lineTo(x0 + w - 4, yOf(n.causal.init));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (values.length > 1) {
+    const dx = (w - 8) / (HISTORY_LEN - 1);
+    const start = x0 + w - 4 - (values.length - 1) * dx;
+    ctx.strokeStyle = sw.stroke;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    values.forEach((v, i) => (i === 0 ? ctx.moveTo(start, yOf(v)) : ctx.lineTo(start + i * dx, yOf(v))));
+    ctx.stroke();
+  }
+}
+
+function drawLoopLabel(view: View, l: LoopLabel, focused: boolean) {
+  const { ctx, theme } = view;
+  const color = l.loop.kind === 'R' ? theme.swatches.terracotta.stroke : theme.swatches.slate.stroke;
+  const R = LOOP_RADIUS;
+
+  if (focused) {
+    const a = ctx.globalAlpha;
+    ctx.fillStyle = theme.selection;
+    ctx.globalAlpha = a * 0.4;
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, R + 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = a;
+  }
+
+  setShadow(view, 8, 2);
+  ctx.fillStyle = theme.card;
+  ctx.beginPath();
+  ctx.arc(l.x, l.y, R, 0, Math.PI * 2);
+  ctx.fill();
+  clearShadow(ctx);
+
+  // Flèche circulaire dans le sens de parcours de la boucle
+  const ar = R - 5;
+  const sweep = Math.PI * 1.55;
+  const dir = l.clockwise ? 1 : -1;
+  const a0 = -Math.PI / 2 + dir * 0.45;
+  const a1 = a0 + dir * sweep;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(l.x, l.y, ar, a0, a1, !l.clockwise);
+  ctx.stroke();
+  const ex = l.x + Math.cos(a1) * ar;
+  const ey = l.y + Math.sin(a1) * ar;
+  const tx = -Math.sin(a1) * dir;
+  const ty = Math.cos(a1) * dir;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(ex + tx * 5, ey + ty * 5);
+  ctx.lineTo(ex - tx * 1.5 - ty * 4, ey - ty * 1.5 + tx * 4);
+  ctx.lineTo(ex - tx * 1.5 + ty * 4, ey - ty * 1.5 - tx * 4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.font = `700 14px ${TITLE_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(l.loop.kind, l.x, l.y + 1);
+}
+
 function drawSignal(view: View, g: EdgeGeom, t: number, delta: number, from: SysNode) {
   const { ctx, theme } = view;
   const p = quadPoint(g.p0, g.c, g.p1, g.t0 + (g.t1 - g.t0) * t);
   const sw = theme.swatches[from.color];
   const grow = Math.min(1, t * 6);
-  const r = 10 * grow;
+  const r = 10 * grow * Math.min(1.4, Math.max(0.55, Math.sqrt(Math.abs(delta))));
   setShadow(view, 6, 2);
   ctx.fillStyle = sw.level;
   ctx.beginPath();

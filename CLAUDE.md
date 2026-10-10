@@ -46,10 +46,10 @@ D'où l'architecture : **un modèle de données unique (graphe typé) et des mot
 
 ## Feuille de route
 
-**Phase 0 : socle** ← *prochaine étape*
+**Phase 0 : socle** ✅
 Scaffold Vite + Svelte 5 + TS. Canvas avec zoom et déplacement (molette, pincement), nœuds et liens, sélection, déplacement, suppression, annuler/rétablir, sauvegarde automatique (localStorage), export/import JSON, partage par URL, bouton « Recentrer ».
 
-**Phase 1 : parité Loopy**
+**Phase 1 : parité Loopy** ✅
 - Outil Crayon :
   - un tracé fermé dans le vide crée un nœud (centre et rayon tirés de la boîte englobante) ;
   - un tracé d'un nœud vers un autre crée un lien ;
@@ -59,13 +59,20 @@ Scaffold Vite + Svelte 5 + TS. Canvas avec zoom et déplacement (molette, pincem
 - Outil Gomme : passer sur les éléments les supprime. Ils s'estompent pendant le tracé et sont effacés au relâchement, en une seule étape d'annulation.
 - Liens + / − : pastille au milieu du lien, un tap l'inverse. Boutons ▲▼, impulsions animées, lecture/pause, vitesse.
 
-**Phase 2 : Loopy+**
+**Phase 2 : Loopy+** ← *en cours : tout est fait sauf le mode présentation*
 - **Détection automatique des boucles**, étiquetées R (renforçante) ou B (équilibrante) : un nombre pair de liens − donne R, impair donne B (cycles élémentaires, algorithme de Johnson). Mise en évidence au survol.
 - Paramètres de lien : poids et **retard**.
 - Paramètres de nœud : seuil, accumulation puis largage, saturation, retour progressif à l'équilibre, **irréversibilité** (verrouillage une fois le seuil franchi).
 - Petite courbe d'historique sous chaque nœud.
-- **Mode présentation** : récit pas à pas avec mise en évidence des éléments.
+- **Mode présentation** : récit pas à pas avec mise en évidence des éléments. ← *prochaine étape*
 - Modèles d'exemple : proies/prédateurs, albédo, panique bancaire…
+
+Sémantique retenue pour le moteur causal (`src/sim/loopy.ts`) :
+- Les réglages propres au mode causal sont dans `SysNode.causal` (niveau de départ, seuil, retour à l'équilibre, saturation), pour ne pas polluer le futur modèle stocks-flux. `parseDoc` migre l'ancien `init` à plat.
+- Une impulsion a une intensité (signe × force du lien). Sans saturation, elle repart intacte même si le niveau est au bord (règle de Loopy). Avec saturation, elle transmet la variation réelle, donc une boucle renforçante s'éteint en saturant.
+- Bascule : au seuil, le nœud se bloque à 1. Il émet une impulsion de plus (l'« onde de choc »), laisse passer les hausses et absorbe les baisses jusqu'à la réinitialisation.
+- Largage : le nœud retient tout sans transmettre. Au seuil, il relâche une impulsion par cran accumulé et retombe à son niveau de départ.
+- Retard : la durée de trajet est multipliée par 1, 2,5 ou 5. Retour à l'équilibre : décroissance exponentielle (τ = 6 s ou 2 s), silencieuse (n'émet pas d'impulsion).
 
 **Phase 3 : stocks-flux**
 Stocks, flux, variables, liens d'information, éditeur d'équations, intégrateur Euler/RK4, panneau de courbes, curseurs de paramètres en direct.

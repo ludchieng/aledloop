@@ -1,9 +1,20 @@
 import { COLOR_KEYS } from '../theme';
-import { DEFAULT_BEND, emptyDoc, newId, NODE_RADIUS, type Doc, type SysEdge, type SysNode } from './types';
+import { findLoops } from './loops';
+import {
+  DEFAULT_BEND,
+  defaultCausal,
+  emptyDoc,
+  newId,
+  NODE_RADIUS,
+  type CausalProps,
+  type Doc,
+  type SysEdge,
+  type SysNode,
+} from './types';
 
 export type Tool = 'pen' | 'hand' | 'eraser';
 export type Mode = 'edit' | 'sim';
-export type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null;
+export type Selection = { kind: 'node' | 'edge' | 'loop'; id: string } | null;
 
 /** Deux modifications de même clé à moins de MERGE_MS d'écart ne font qu'une étape d'annulation. */
 const MERGE_MS = 1000;
@@ -30,6 +41,8 @@ export class Editor {
   private lastTime = 0;
 
   changed() {
+    // Une boucle sélectionnée peut disparaître (lien inversé, supprimé…).
+    if (this.selection?.kind === 'loop') this.validateSelection();
     this.rev++;
   }
 
@@ -109,14 +122,14 @@ export class Editor {
       r,
       label: '',
       color: COLOR_KEYS[this.doc.nodes.length % COLOR_KEYS.length],
-      init: 0.5,
+      causal: defaultCausal(),
     };
     this.doc.nodes.push(node);
     return node;
   }
 
   private insertEdge(from: string, to: string): SysEdge {
-    const edge: SysEdge = { id: newId('e'), from, to, polarity: 1, bend: DEFAULT_BEND };
+    const edge: SysEdge = { id: newId('e'), from, to, polarity: 1, weight: 1, delay: 0, bend: DEFAULT_BEND };
     this.doc.edges.push(edge);
     return edge;
   }
@@ -203,6 +216,14 @@ export class Editor {
     this.changed();
   }
 
+  updateCausal(id: string, patch: Partial<CausalProps>, key?: string) {
+    const node = this.node(id);
+    if (!node) return;
+    this.checkpoint(key);
+    node.causal = { ...node.causal, ...patch };
+    this.changed();
+  }
+
   updateEdge(id: string, patch: Partial<Omit<SysEdge, 'id' | 'from' | 'to'>>, key?: string) {
     const edge = this.edge(id);
     if (!edge) return;
@@ -227,13 +248,16 @@ export class Editor {
     const sel = this.selection;
     if (!sel) return;
     if (sel.kind === 'node') this.remove([sel.id]);
-    else this.remove([], [sel.id]);
+    else if (sel.kind === 'edge') this.remove([], [sel.id]);
   }
 
   private validateSelection() {
     const sel = this.selection;
     if (!sel) return;
-    const exists = sel.kind === 'node' ? this.node(sel.id) : this.edge(sel.id);
+    const exists =
+      sel.kind === 'node' ? this.node(sel.id)
+      : sel.kind === 'edge' ? this.edge(sel.id)
+      : findLoops(this.doc).some((l) => l.key === sel.id);
     if (!exists) this.selection = null;
   }
 }

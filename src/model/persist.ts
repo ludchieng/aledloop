@@ -1,9 +1,32 @@
 import { COLOR_KEYS, type ColorKey } from '../theme';
-import { MAX_RADIUS, MIN_RADIUS, NODE_RADIUS, type Doc, type SysEdge, type SysNode } from './types';
+import {
+  MAX_RADIUS,
+  MIN_RADIUS,
+  NODE_RADIUS,
+  WEIGHTS,
+  type CausalProps,
+  type Doc,
+  type SysEdge,
+  type SysNode,
+  type Weight,
+} from './types';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const oneOf = <T>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
+
+/** `legacyInit` : avant la phase 2, le niveau de départ était directement sur le nœud. */
+function parseCausal(raw: unknown, legacyInit: unknown): CausalProps {
+  const c = isObj(raw) ? raw : {};
+  return {
+    init: clamp(num(c.init, num(legacyInit, 0.5)), 0, 1),
+    thresholdMode: oneOf(c.thresholdMode, ['none', 'tip', 'release'] as const, 'none'),
+    threshold: clamp(num(c.threshold, 0.8), 0, 1),
+    relax: oneOf(c.relax, [0, 1, 2] as const, 0),
+    saturate: c.saturate === true,
+  };
+}
 
 /**
  * Valide et nettoie un document venu de l'extérieur (fichier, URL, localStorage).
@@ -26,7 +49,7 @@ export function parseDoc(raw: unknown): Doc {
       r: clamp(num(n.r, NODE_RADIUS), MIN_RADIUS, MAX_RADIUS),
       label: typeof n.label === 'string' ? n.label.slice(0, 200) : '',
       color: COLOR_KEYS.includes(n.color as ColorKey) ? (n.color as ColorKey) : 'sand',
-      init: clamp(num(n.init, 0.5), 0, 1),
+      causal: parseCausal(n.causal, n.init),
     });
   }
   const edges: SysEdge[] = [];
@@ -40,7 +63,15 @@ export function parseDoc(raw: unknown): Doc {
     if (pairs.has(pair)) continue;
     edgeIds.add(e.id);
     pairs.add(pair);
-    edges.push({ id: e.id, from: e.from, to: e.to, polarity: e.polarity === -1 ? -1 : 1, bend: num(e.bend, 0) });
+    edges.push({
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      polarity: e.polarity === -1 ? -1 : 1,
+      weight: oneOf<Weight>(e.weight, WEIGHTS, 1),
+      delay: oneOf(e.delay, [0, 1, 2] as const, 0),
+      bend: num(e.bend, 0),
+    });
   }
   return { version: 1, nodes, edges };
 }
@@ -92,9 +123,16 @@ async function pipe(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | 
 /** Arrondit les coordonnées pour raccourcir l'URL. */
 function compactDoc(doc: Doc): Doc {
   const round = (v: number) => Math.round(v);
+  const round2 = (v: number) => Math.round(v * 100) / 100;
   return {
     version: 1,
-    nodes: doc.nodes.map((n) => ({ ...n, x: round(n.x), y: round(n.y), r: round(n.r), init: Math.round(n.init * 100) / 100 })),
+    nodes: doc.nodes.map((n) => ({
+      ...n,
+      x: round(n.x),
+      y: round(n.y),
+      r: round(n.r),
+      causal: { ...n.causal, init: round2(n.causal.init), threshold: round2(n.causal.threshold) },
+    })),
     edges: doc.edges.map((e) => ({ ...e, bend: round(e.bend) })),
   };
 }

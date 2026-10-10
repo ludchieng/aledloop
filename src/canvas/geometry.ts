@@ -1,3 +1,4 @@
+import type { Loop } from '../model/loops';
 import { MAX_RADIUS, MIN_RADIUS, type Doc, type SysNode } from '../model/types';
 
 export interface Pt {
@@ -126,6 +127,7 @@ export type Hit =
   | { kind: 'badge'; id: string }
   | { kind: 'node'; id: string }
   | { kind: 'edge'; id: string }
+  | { kind: 'loop'; id: string }
   | null;
 
 /** Élément sous le point p. Priorité : pastille d'un lien, puis nœud, puis lien. `pad` en unités monde. */
@@ -199,4 +201,77 @@ export function docBounds(doc: Doc): Box | null {
     maxX: Math.max(...doc.nodes.map((n) => n.x + n.r)),
     maxY: Math.max(...doc.nodes.map((n) => n.y + n.r)),
   };
+}
+
+// --- Étiquettes de boucle (R / B) ------------------------------------------------
+
+export const LOOP_RADIUS = 17;
+
+export interface LoopLabel {
+  loop: Loop;
+  x: number;
+  y: number;
+  /** Sens de parcours à l'écran, pour dessiner la flèche circulaire dans le bon sens. */
+  clockwise: boolean;
+}
+
+/**
+ * Place une étiquette au centre de chaque boucle : moyenne des centres des nœuds et des milieux
+ * des liens (ces derniers comptent pour les boucles à deux nœuds, dont les liens sont courbés).
+ * Les étiquettes qui se chevauchent sont ensuite écartées.
+ */
+export function loopLabels(doc: Doc, loops: Loop[]): LoopLabel[] {
+  const byId = nodeById(doc);
+  const edges = new Map(doc.edges.map((e) => [e.id, e]));
+  const labels: LoopLabel[] = [];
+  for (const loop of loops) {
+    const pts: Pt[] = [];
+    for (const id of loop.edges) {
+      const e = edges.get(id)!;
+      const a = byId.get(e.from)!;
+      pts.push(a, edgeGeom(a, byId.get(e.to)!, e.bend).mid);
+    }
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      area += a.x * b.y - b.x * a.y;
+    }
+    labels.push({
+      loop,
+      x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+      y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+      // Repère écran : y vers le bas, donc une aire positive correspond au sens horaire.
+      clockwise: area > 0,
+    });
+  }
+  const min = LOOP_RADIUS * 2 + 6;
+  for (let iter = 0; iter < 8; iter++) {
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        const a = labels[i];
+        const b = labels[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= min) continue;
+        if (d < 0.01) {
+          dx = 0;
+          dy = 1;
+          d = 1;
+        }
+        const push = (min - Math.min(d, min)) / 2;
+        a.x -= (dx / d) * push;
+        a.y -= (dy / d) * push;
+        b.x += (dx / d) * push;
+        b.y += (dy / d) * push;
+      }
+    }
+  }
+  return labels;
+}
+
+export function loopAt(labels: LoopLabel[], p: Pt, pad: number): LoopLabel | null {
+  for (const l of labels) if (dist(l, p) <= LOOP_RADIUS + pad) return l;
+  return null;
 }

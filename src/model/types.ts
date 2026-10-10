@@ -1,5 +1,27 @@
 import type { ColorKey } from '../theme';
 
+/** Que se passe-t-il quand le niveau atteint le seuil ? */
+export type ThresholdMode =
+  /** Rien de spécial. */
+  | 'none'
+  /** Bascule irréversible : l'élément se bloque au maximum, les baisses n'ont plus d'effet. */
+  | 'tip'
+  /** Accumulation puis largage : l'élément retient les impulsions, puis relâche tout d'un coup. */
+  | 'release';
+
+/** Réglages propres au mode causal (façon Loopy). Ignorés par le futur moteur stocks-flux. */
+export interface CausalProps {
+  /** Niveau de départ, dans [0, 1]. */
+  init: number;
+  thresholdMode: ThresholdMode;
+  /** Seuil, dans [0, 1]. */
+  threshold: number;
+  /** Retour à l'équilibre (vers `init`) : 0 non, 1 lent, 2 rapide. */
+  relax: 0 | 1 | 2;
+  /** Saturation : plus l'élément est plein (ou vide), moins il réagit et moins il transmet. */
+  saturate: boolean;
+}
+
 export interface SysNode {
   id: string;
   x: number;
@@ -7,17 +29,23 @@ export interface SysNode {
   r: number;
   label: string;
   color: ColorKey;
-  /** Niveau de départ en simulation causale, dans [0, 1]. */
-  init: number;
+  causal: CausalProps;
 }
 
 export type Polarity = 1 | -1;
+
+export const WEIGHTS = [0.5, 1, 2] as const;
+export type Weight = (typeof WEIGHTS)[number];
 
 export interface SysEdge {
   id: string;
   from: string;
   to: string;
   polarity: Polarity;
+  /** Force du lien : multiplie l'impulsion transmise. */
+  weight: Weight;
+  /** Retard : 0 normal, 1 lent, 2 très lent. */
+  delay: 0 | 1 | 2;
   /** Décalage perpendiculaire du milieu de la courbe (unités monde). */
   bend: number;
 }
@@ -32,6 +60,10 @@ export const NODE_RADIUS = 48;
 export const MIN_RADIUS = 24;
 export const MAX_RADIUS = 140;
 export const DEFAULT_BEND = 28;
+
+export function defaultCausal(): CausalProps {
+  return { init: 0.5, thresholdMode: 'none', threshold: 0.8, relax: 0, saturate: false };
+}
 
 export function emptyDoc(): Doc {
   return { version: 1, nodes: [], edges: [] };

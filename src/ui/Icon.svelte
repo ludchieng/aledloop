@@ -25,6 +25,7 @@
     straight: 'M4 12h16M4 8v8M20 8v8',
     close: 'M18 6 6 18M6 6l12 12',
     chevron: 'm6 9 6 6 6-6',
+    loop: 'M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3',
   } as const;
 
   export type IconName = keyof typeof PATHS;

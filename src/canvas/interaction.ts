@@ -8,9 +8,11 @@ import {
   distToEdge,
   edgeGeom,
   hitTest,
+  loopAt,
   nodeAt,
   nodeById,
   type Hit,
+  type LoopLabel,
   type Pt,
 } from './geometry';
 import type { Overlay } from './render';
@@ -27,6 +29,7 @@ type Gesture =
   | { kind: 'dragNode'; id: string; offset: Pt; start: Pt; moved: boolean }
   | { kind: 'bendEdge'; id: string; start: Pt; moved: boolean }
   | { kind: 'tapBadge'; id: string; start: Pt; moved: boolean }
+  | { kind: 'tapLoop'; id: string; start: Pt; moved: boolean }
   | { kind: 'pan'; last: Pt; start: Pt; moved: boolean; deselect: boolean }
   | { kind: 'pinch'; mid: Pt; spread: number }
   | { kind: 'ignore' };
@@ -35,6 +38,8 @@ export interface Host {
   editor: Editor;
   camera: Camera;
   sim(): LoopySim | null;
+  /** Étiquettes R / B visibles (vide si masquées). */
+  loopLabels(): LoopLabel[];
   requestRender(): void;
   setCursor(cursor: string): void;
   hint(message: string): void;
@@ -42,7 +47,7 @@ export interface Host {
 
 const DOUBLE_TAP_MS = 350;
 
-export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
+export class Interaction implements Omit<Overlay, 'selection' | 'sim' | 'loopLabels' | 'loopFocus'> {
   hover: Hit = null;
   linkTarget: string | null = null;
   trail: Overlay['trail'] = null;
@@ -102,6 +107,12 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
     const w = this.world(p);
     const pad = this.slop / this.host.camera.zoom;
 
+    const loop = editor.tool !== 'eraser' || editor.mode === 'sim' ? loopAt(this.host.loopLabels(), w, pad) : null;
+    if (loop) {
+      this.g = { kind: 'tapLoop', id: loop.loop.key, start: p, moved: false };
+      return;
+    }
+
     if (editor.mode === 'sim') {
       const node = nodeAt(editor.doc, w, pad / 2);
       const sim = this.host.sim();
@@ -109,7 +120,7 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
         sim.pulse(node.id, w.y < node.y ? 1 : -1);
         this.g = { kind: 'ignore' };
       } else {
-        this.startPan(p, false);
+        this.startPan(p, true);
       }
       this.host.requestRender();
       return;
@@ -225,6 +236,7 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
         break;
       }
       case 'tapBadge':
+      case 'tapLoop':
         g.moved ||= this.movedFrom(g.start, p);
         break;
     }
@@ -266,6 +278,12 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
         if (!g.moved) {
           editor.togglePolarity(g.id);
           editor.selection = { kind: 'edge', id: g.id };
+        }
+        break;
+      case 'tapLoop':
+        if (!g.moved) {
+          const same = editor.selection?.kind === 'loop' && editor.selection.id === g.id;
+          editor.selection = same ? null : { kind: 'loop', id: g.id };
         }
         break;
       case 'pan':
@@ -397,7 +415,10 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
     const w = this.world(p);
     let hover: Hit = null;
     let pulse: Overlay['pulseHover'] = null;
-    if (editor.mode === 'sim') {
+    const loop = loopAt(this.host.loopLabels(), w, 2 / camera.zoom);
+    if (loop) {
+      hover = { kind: 'loop', id: loop.loop.key };
+    } else if (editor.mode === 'sim') {
       const node = nodeAt(editor.doc, w);
       if (node) pulse = { id: node.id, delta: w.y < node.y ? 1 : -1 };
     } else {
@@ -418,8 +439,8 @@ export class Interaction implements Omit<Overlay, 'selection' | 'sim'> {
     let cursor = 'default';
     if (g.kind === 'pan' || g.kind === 'dragNode' || g.kind === 'bendEdge') cursor = 'grabbing';
     else if (this.spaceDown) cursor = 'grab';
-    else if (editor.mode === 'sim') cursor = this.pulseHover ? 'pointer' : 'grab';
-    else if (this.hover?.kind === 'badge') cursor = 'pointer';
+    else if (editor.mode === 'sim') cursor = this.pulseHover || this.hover ? 'pointer' : 'grab';
+    else if (this.hover?.kind === 'badge' || this.hover?.kind === 'loop') cursor = 'pointer';
     else if (editor.tool === 'pen') cursor = 'crosshair';
     else if (editor.tool === 'hand') cursor = 'grab';
     else if (editor.tool === 'eraser') cursor = 'cell';

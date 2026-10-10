@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import { prefs } from './prefs.svelte';
 
   let { zoom, onzoomby, onfit }: { zoom: number; onzoomby: (factor: number) => void; onfit: () => void } = $props();
 </script>
@@ -13,6 +14,16 @@
     <Icon name="plus" size={18} />
   </button>
   <span class="sep"></span>
+  <button
+    class="btn"
+    class:active={prefs.showLoops}
+    aria-pressed={prefs.showLoops}
+    aria-label="Afficher les boucles"
+    title={prefs.showLoops ? 'Masquer les boucles R / B' : 'Afficher les boucles R / B'}
+    onclick={() => prefs.toggleLoops()}
+  >
+    <Icon name="loop" size={19} />
+  </button>
   <button class="btn" aria-label="Recentrer" title="Recentrer sur le diagramme" onclick={onfit}>
     <Icon name="focus" size={19} />
   </button>
@@ -46,6 +57,9 @@
     .value,
     .sep {
       display: none;
+    }
+    .zoom {
+      gap: 2px;
     }
   }
 

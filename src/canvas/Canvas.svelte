@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { editor } from '../model/editor.svelte';
+  import { findLoops, type Loop } from '../model/loops';
   import { sim } from '../sim/session.svelte';
   import { THEMES } from '../theme';
   import { prefs } from '../ui/prefs.svelte';
   import { Camera } from './camera';
-  import { docBounds, type Pt } from './geometry';
+  import { docBounds, loopLabels, type LoopLabel, type Pt } from './geometry';
   import { Interaction } from './interaction';
   import { render } from './render';
 
@@ -21,10 +22,31 @@
   let lastZoom = 0;
 
   const camera = new Camera();
+
+  // Les boucles ne changent qu'avec le document : on les recalcule une fois par révision.
+  let loopCache: { rev: number; loops: Loop[]; labels: LoopLabel[] } = { rev: -1, loops: [], labels: [] };
+  function loops() {
+    if (loopCache.rev !== editor.rev) {
+      const found = findLoops(editor.doc);
+      loopCache = { rev: editor.rev, loops: found, labels: loopLabels(editor.doc, found) };
+    }
+    return loopCache;
+  }
+
+  /** Boucle mise en évidence : celle survolée, sinon celle sélectionnée. */
+  function loopFocus(): Loop | null {
+    const key =
+      interaction.hover?.kind === 'loop' ? interaction.hover.id
+      : editor.selection?.kind === 'loop' ? editor.selection.id
+      : null;
+    return key ? (loops().loops.find((l) => l.key === key) ?? null) : null;
+  }
+
   const interaction = new Interaction({
     editor,
     camera,
     sim: () => sim.engine,
+    loopLabels: () => (prefs.showLoops ? loops().labels : []),
     requestRender,
     setCursor: (cursor) => {
       if (canvas) canvas.style.cursor = cursor;
@@ -50,6 +72,8 @@
       trail: interaction.trail,
       erasing: interaction.erasing,
       pulseHover: interaction.pulseHover,
+      loopLabels: prefs.showLoops ? loops().labels : null,
+      loopFocus: loopFocus(),
       sim: sim.engine,
     });
     if (camera.zoom !== lastZoom) {
@@ -62,7 +86,16 @@
   }
 
   export function fit() {
-    camera.fit(docBounds(editor.doc), width, height);
+    const box = docBounds(editor.doc);
+    // Place sous les galets pour les courbes d'historique de la simulation.
+    if (box) box.maxY += 44;
+    const side = Math.min(60, width * 0.06);
+    camera.fit(box, width, height, {
+      top: Math.min(90, height * 0.12),
+      bottom: Math.min(120, height * 0.16),
+      left: side,
+      right: side,
+    });
     requestRender();
   }
 
@@ -148,22 +181,27 @@
     void editor.selection;
     void editor.mode;
     void prefs.theme;
+    void prefs.showLoops;
     requestRender();
   });
 
-  // Sur téléphone, l'inspecteur occupe le bas de l'écran : on remonte la vue
-  // si l'élément sélectionné se retrouve caché dessous.
+  // L'inspecteur occupe le bas de l'écran (téléphone) ou la droite (bureau) :
+  // on décale la vue si l'élément sélectionné se retrouve caché dessous.
   $effect(() => {
     const sel = editor.selection;
-    if (sel?.kind !== 'node' || width > 700 || interaction.busy) return;
+    if (sel?.kind !== 'node' || interaction.busy) return;
     const node = editor.node(sel.id);
     if (!node) return;
-    const visibleBottom = height * 0.5;
-    const bottom = camera.toScreen(node).y + node.r * camera.zoom;
-    if (bottom > visibleBottom) {
-      camera.panBy(0, visibleBottom - bottom);
-      requestRender();
+    const c = camera.toScreen(node);
+    const r = node.r * camera.zoom + 12;
+    if (width <= 700) {
+      const limit = height * 0.5;
+      if (c.y + r > limit) camera.panBy(0, limit - c.y - r);
+    } else {
+      const limit = width - 330;
+      if (c.x + r > limit) camera.panBy(limit - c.x - r, 0);
     }
+    requestRender();
   });
 
   $effect(() => {

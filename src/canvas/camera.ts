@@ -1,4 +1,11 @@
-import type { Pt } from './geometry';
+import type { Box, Pt } from './geometry';
+
+export interface Margins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
 
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 4;
@@ -32,19 +39,24 @@ export class Camera {
     this.y = p.y - world.y * this.zoom;
   }
 
-  /** Cadre une boîte du monde dans une vue de taille w × h, avec une marge en pixels. */
-  fit(box: { minX: number; minY: number; maxX: number; maxY: number } | null, w: number, h: number, maxMargin = 80) {
-    const margin = Math.min(maxMargin, Math.min(w, h) * 0.1);
+  /**
+   * Cadre une boîte du monde dans une vue de taille w × h. Les marges (en pixels) réservent
+   * la place de l'interface qui flotte par-dessus le canvas (barres du haut et du bas).
+   */
+  fit(box: Box | null, w: number, h: number, margins: Margins = { top: 80, right: 80, bottom: 80, left: 80 }) {
+    const { top, right, bottom, left } = margins;
+    const cx = (left + w - right) / 2;
+    const cy = (top + h - bottom) / 2;
     if (!box) {
       this.zoom = 1;
-      this.x = w / 2;
-      this.y = h / 2;
+      this.x = cx;
+      this.y = cy;
       return;
     }
     const bw = Math.max(box.maxX - box.minX, 1);
     const bh = Math.max(box.maxY - box.minY, 1);
-    this.zoom = clamp(Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh), MIN_ZOOM, 1.5);
-    this.x = w / 2 - ((box.minX + box.maxX) / 2) * this.zoom;
-    this.y = h / 2 - ((box.minY + box.maxY) / 2) * this.zoom;
+    this.zoom = clamp(Math.min((w - left - right) / bw, (h - top - bottom) / bh), MIN_ZOOM, 1.3);
+    this.x = cx - ((box.minX + box.maxX) / 2) * this.zoom;
+    this.y = cy - ((box.minY + box.maxY) / 2) * this.zoom;
   }
 }

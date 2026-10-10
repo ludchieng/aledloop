@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from './examples';
 import { decodeDoc, encodeDoc, parseDoc } from './persist';
+import { defaultCausal } from './types';
 
 describe('parseDoc', () => {
   it('refuse ce qui n’est pas un modèle', () => {
@@ -20,11 +21,30 @@ describe('parseDoc', () => {
       ],
     });
     expect(doc.nodes.map((n) => n.id)).toEqual(['a', 'b']);
-    expect(doc.nodes[0]).toMatchObject({ x: 1, y: 2, r: 48, label: '', init: 0.5 });
-    expect(doc.nodes[1]).toMatchObject({ color: 'sand', r: 140, init: 1 });
+    expect(doc.nodes[0]).toMatchObject({ x: 1, y: 2, r: 48, label: '', causal: defaultCausal() });
+    expect(doc.nodes[1]).toMatchObject({ color: 'sand', r: 140, causal: { init: 1 } });
     expect(doc.edges).toEqual([
-      { id: 'e1', from: 'a', to: 'b', polarity: -1, bend: 12 },
-      { id: 'e5', from: 'b', to: 'a', polarity: 1, bend: 0 },
+      { id: 'e1', from: 'a', to: 'b', polarity: -1, weight: 1, delay: 0, bend: 12 },
+      { id: 'e5', from: 'b', to: 'a', polarity: 1, weight: 1, delay: 0, bend: 0 },
+    ]);
+  });
+
+  it('lit les réglages causaux et rejette les valeurs inconnues', () => {
+    const doc = parseDoc({
+      nodes: [
+        { id: 'a', causal: { init: 0.2, thresholdMode: 'tip', threshold: 0.9, relax: 2, saturate: true } },
+        { id: 'b', causal: { thresholdMode: 'boum', relax: 7, saturate: 'oui' } },
+      ],
+      edges: [
+        { id: 'e', from: 'a', to: 'b', weight: 2, delay: 1 },
+        { id: 'f', from: 'b', to: 'a', weight: 3, delay: 9 },
+      ],
+    });
+    expect(doc.nodes[0].causal).toEqual({ init: 0.2, thresholdMode: 'tip', threshold: 0.9, relax: 2, saturate: true });
+    expect(doc.nodes[1].causal).toEqual(defaultCausal());
+    expect(doc.edges.map((e) => [e.weight, e.delay])).toEqual([
+      [2, 1],
+      [1, 0],
     ]);
   });
 

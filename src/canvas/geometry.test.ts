@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Doc, SysNode } from '../model/types';
+import { defaultCausal, type Doc, type SysNode } from '../model/types';
 import { bendThrough, classifyStroke, dist, docBounds, edgeGeom, hitTest, quadPoint, type Pt } from './geometry';
 
-const node = (id: string, x: number, y: number, r = 40): SysNode => ({ id, x, y, r, label: id, color: 'sage', init: 0.5 });
+const node = (id: string, x: number, y: number, r = 40): SysNode => ({ id, x, y, r, label: id, color: 'sage', causal: defaultCausal() });
 
 function circle(cx: number, cy: number, r: number, n = 40): Pt[] {
   return Array.from({ length: n + 1 }, (_, i) => ({
@@ -41,7 +41,7 @@ describe('hitTest', () => {
   const doc: Doc = {
     version: 1,
     nodes: [node('a', 0, 0), node('b', 300, 0)],
-    edges: [{ id: 'e', from: 'a', to: 'b', polarity: 1, bend: 0 }],
+    edges: [{ id: 'e', from: 'a', to: 'b', polarity: 1, weight: 1, delay: 0, bend: 0 }],
   };
 
   it('trouve un nœud, un lien et sa pastille', () => {
