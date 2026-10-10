@@ -1,0 +1,110 @@
+import { COLOR_KEYS, type ColorKey } from '../theme';
+import { MAX_RADIUS, MIN_RADIUS, NODE_RADIUS, type Doc, type SysEdge, type SysNode } from './types';
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * Valide et nettoie un document venu de l'extérieur (fichier, URL, localStorage).
+ * Lance une erreur si ce n'est pas un document aledloop ; sinon répare ce qui peut l'être
+ * (valeurs manquantes, couleurs inconnues, liens orphelins ou en double).
+ */
+export function parseDoc(raw: unknown): Doc {
+  if (!isObj(raw) || !Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) {
+    throw new Error('Ce fichier ne ressemble pas à un modèle aledloop.');
+  }
+  const nodes: SysNode[] = [];
+  const ids = new Set<string>();
+  for (const n of raw.nodes) {
+    if (!isObj(n) || typeof n.id !== 'string' || ids.has(n.id)) continue;
+    ids.add(n.id);
+    nodes.push({
+      id: n.id,
+      x: num(n.x, 0),
+      y: num(n.y, 0),
+      r: clamp(num(n.r, NODE_RADIUS), MIN_RADIUS, MAX_RADIUS),
+      label: typeof n.label === 'string' ? n.label.slice(0, 200) : '',
+      color: COLOR_KEYS.includes(n.color as ColorKey) ? (n.color as ColorKey) : 'sand',
+      init: clamp(num(n.init, 0.5), 0, 1),
+    });
+  }
+  const edges: SysEdge[] = [];
+  const edgeIds = new Set<string>();
+  const pairs = new Set<string>();
+  for (const e of raw.edges) {
+    if (!isObj(e) || typeof e.id !== 'string' || edgeIds.has(e.id)) continue;
+    if (typeof e.from !== 'string' || typeof e.to !== 'string') continue;
+    if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to) continue;
+    const pair = e.from + '>' + e.to;
+    if (pairs.has(pair)) continue;
+    edgeIds.add(e.id);
+    pairs.add(pair);
+    edges.push({ id: e.id, from: e.from, to: e.to, polarity: e.polarity === -1 ? -1 : 1, bend: num(e.bend, 0) });
+  }
+  return { version: 1, nodes, edges };
+}
+
+// --- localStorage --------------------------------------------------------
+
+const STORAGE_KEY = 'aledloop:doc';
+
+export function saveLocal(doc: Doc): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(doc));
+  } catch {
+    // Mode privé, quota plein… on ignore : la sauvegarde auto est un confort.
+  }
+}
+
+export function loadLocal(): Doc | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? parseDoc(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Partage par URL : JSON → deflate-raw → base64url ---------------------
+
+function toBase64Url(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
+  const b64 = text.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function pipe(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
+  const out = new Blob([bytes]).stream().pipeThrough(stream);
+  return new Uint8Array(await new Response(out).arrayBuffer());
+}
+
+/** Arrondit les coordonnées pour raccourcir l'URL. */
+function compactDoc(doc: Doc): Doc {
+  const round = (v: number) => Math.round(v);
+  return {
+    version: 1,
+    nodes: doc.nodes.map((n) => ({ ...n, x: round(n.x), y: round(n.y), r: round(n.r), init: Math.round(n.init * 100) / 100 })),
+    edges: doc.edges.map((e) => ({ ...e, bend: round(e.bend) })),
+  };
+}
+
+export async function encodeDoc(doc: Doc): Promise<string> {
+  const json = new TextEncoder().encode(JSON.stringify(compactDoc(doc)));
+  return toBase64Url(await pipe(json, new CompressionStream('deflate-raw')));
+}
+
+export async function decodeDoc(text: string): Promise<Doc> {
+  const bytes = await pipe(fromBase64Url(text), new DecompressionStream('deflate-raw'));
+  return parseDoc(JSON.parse(new TextDecoder().decode(bytes)));
+}
