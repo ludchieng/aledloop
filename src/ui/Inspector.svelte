@@ -1,8 +1,12 @@
 <script lang="ts">
   import { editor } from '../model/editor.svelte';
-  import { describeLoop, findLoops } from '../model/loops';
-  import { MAX_RADIUS, MIN_RADIUS, type ThresholdMode, type Weight } from '../model/types';
+  import { analyzeLoop, describeLoop, findLoops } from '../model/loops';
+  import { richText } from '../model/story';
+  import { formatDuration, formatEstimate, unitName } from '../model/time';
+  import { MAX_RADIUS, MAX_WEIGHT, MIN_RADIUS, MIN_WEIGHT, type NodeKind, type ThresholdMode } from '../model/types';
   import { COLOR_KEYS, COLOR_NAMES } from '../theme';
+  import Duration from './Duration.svelte';
+  import { help, loopSection, SECTIONS } from './help.svelte';
   import Icon from './Icon.svelte';
   import { toasts } from './notify.svelte';
   import { layout } from './layout.svelte';
@@ -24,7 +28,7 @@
     void editor.rev;
     const sel = editor.selection;
     const e = sel?.kind === 'edge' ? editor.edge(sel.id) : undefined;
-    return e ? { ...e, fromName: nameOf(e.from), toName: nameOf(e.to) } : null;
+    return e ? { ...e, fromName: nameOf(e.from), toName: nameOf(e.to), toStock: editor.node(e.to)?.causal.kind === 'stock' } : null;
   });
 
   const loop = $derived.by(() => {
@@ -34,14 +38,20 @@
     const l = findLoops(editor.doc).find((x) => x.key === sel.id);
     if (!l) return null;
     const steps = l.edges.map((id, i) => ({ name: nameOf(l.nodes[i]), polarity: editor.edge(id)?.polarity ?? 1 }));
-    return { ...l, steps, negatives: steps.filter((s) => s.polarity === -1).length };
+    return { ...l, steps, negatives: steps.filter((s) => s.polarity === -1).length, analysis: analyzeLoop(editor.doc, l) };
+  });
+
+  const unit = $derived.by(() => {
+    void editor.rev;
+    return editor.doc.timeUnit;
   });
 
   // Masqué pendant le choix des éléments d'une étape, et sur téléphone quand le récit occupe le bas de l'écran.
+  // En simulation et en présentation, seule une boucle touchée l'ouvre (un récit peut inviter à le faire).
   const visible = $derived(
     !storyUi.picking &&
       !(storyUi.open && layout.narrow) &&
-      (editor.mode === 'edit' ? !!(node || edge || loop) : editor.mode === 'sim' && !!loop),
+      (editor.mode === 'edit' ? !!(node || edge || loop) : !!loop),
   );
 
   let labelInput: HTMLInputElement | undefined = $state();
@@ -62,35 +72,39 @@
     if (!editor.reverseEdge(id)) toasts.show('Il existe déjà un lien dans l’autre sens.');
   }
 
-  const THRESHOLD_OPTIONS: { value: ThresholdMode; label: string }[] = [
-    { value: 'none', label: 'Aucun' },
-    { value: 'tip', label: 'Bascule' },
-    { value: 'release', label: 'Largage' },
+  /** Une variable ne peut pas « larguer » : elle n'accumule rien. */
+  function setKind(id: string, kind: NodeKind, mode: ThresholdMode) {
+    editor.updateCausal(id, kind === 'variable' && mode === 'release' ? { kind, thresholdMode: 'none' } : { kind });
+  }
+
+  // Curseur de force logarithmique : de 0,01 à 3, chaque ordre de grandeur a la même place (comme un bouton de volume).
+  const WEIGHT_STEPS = 1000;
+  const WEIGHT_SPAN = Math.log(MAX_WEIGHT / MIN_WEIGHT);
+  const weightToSlider = (w: number) => Math.round((WEIGHT_STEPS * Math.log(w / MIN_WEIGHT)) / WEIGHT_SPAN);
+  const sliderToWeight = (v: number) => Number((MIN_WEIGHT * Math.exp((v / WEIGHT_STEPS) * WEIGHT_SPAN)).toPrecision(2));
+
+  const KIND_OPTIONS: { value: NodeKind; label: string }[] = [
+    { value: 'variable', label: 'Variable' },
+    { value: 'stock', label: 'Accumulation' },
   ];
+  const KIND_HELP: Record<NodeKind, string> = {
+    variable: 'Suit ses causes **immédiatement**. Ex. : naissances, chauffage, peur, prix.',
+    stock: 'Se **remplit ou se vide au fil du temps**, au rythme de ce qui arrive par ses liens. C’est elle qui donne son rythme à une boucle. Ex. : population, température, argent, CO₂ dans l’air.',
+  };
   const THRESHOLD_HELP: Record<ThresholdMode, string> = {
     none: 'Le niveau monte et descend librement.',
     tip: 'Point de bascule : une fois le seuil franchi, l’élément se bloque au maximum. Plus rien ne peut le faire redescendre.',
-    release: 'Accumulation : l’élément retient les impulsions sans rien transmettre… puis relâche tout d’un coup au seuil.',
+    release: 'Largage : l’accumulation se remplit sans rien transmettre… puis se vide d’un coup au seuil, et transmet tout ce qu’elle avait retenu.',
   };
-  const RELAX_OPTIONS: { value: 0 | 1 | 2; label: string }[] = [
-    { value: 0, label: 'Non' },
-    { value: 1, label: 'Lent' },
-    { value: 2, label: 'Rapide' },
-  ];
-  const WEIGHT_OPTIONS: { value: Weight; label: string }[] = [
-    { value: 0.5, label: 'Faible' },
-    { value: 1, label: 'Normale' },
-    { value: 2, label: 'Forte' },
-  ];
-  const DELAY_OPTIONS: { value: 0 | 1 | 2; label: string }[] = [
-    { value: 0, label: 'Aucun' },
-    { value: 1, label: 'Lent' },
-    { value: 2, label: 'Très lent' },
+  const thresholdOptions = (kind: NodeKind): { value: ThresholdMode; label: string }[] => [
+    { value: 'none', label: 'Aucun' },
+    { value: 'tip', label: 'Bascule' },
+    ...(kind === 'stock' ? [{ value: 'release' as const, label: 'Largage' }] : []),
   ];
 </script>
 
 {#if visible}
-  <aside class="inspector card" aria-label="Inspecteur">
+  <aside class="inspector card" class:present={editor.mode === 'present'} aria-label="Inspecteur">
     <button class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => (editor.selection = null)}>
       <Icon name="close" size={18} />
     </button>
@@ -130,6 +144,15 @@
         </div>
       </div>
 
+      <div class="field">
+        <span>Nature</span>
+        <Segmented label="Nature de l’élément" options={KIND_OPTIONS} value={c.kind} onchange={(v) => setKind(id, v, c.thresholdMode)} />
+        <p class="help">
+          {#each richText(KIND_HELP[c.kind]) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}
+          <button class="why" onclick={() => help.show(SECTIONS.nature)}>En savoir plus</button>
+        </p>
+      </div>
+
       <div class="row">
         <label class="field">
           <span>Taille</span>
@@ -141,7 +164,7 @@
             oninput={(e) => editor.updateNode(id, { r: +e.currentTarget.value }, 'size:' + id)}
           />
         </label>
-        <label class="field">
+        <label class="field" title="Niveau d’équilibre : sans intervention, l’élément y reste.">
           <span>Départ <em>{Math.round(c.init * 100)} %</em></span>
           <input
             type="range"
@@ -153,14 +176,14 @@
         </label>
       </div>
 
-      <details class="more" open={c.thresholdMode !== 'none' || c.relax !== 0 || c.saturate}>
+      <details class="more" open={c.thresholdMode !== 'none' || c.relax > 0 || c.saturate}>
         <summary>Comportement <Icon name="chevron" size={16} /></summary>
 
         <div class="field">
           <span>Seuil</span>
           <Segmented
             label="Seuil"
-            options={THRESHOLD_OPTIONS}
+            options={thresholdOptions(c.kind)}
             value={c.thresholdMode}
             onchange={(v) => editor.updateCausal(id, { thresholdMode: v })}
           />
@@ -181,13 +204,28 @@
 
         <div class="field">
           <span>Retour à l’équilibre</span>
-          <Segmented label="Retour à l’équilibre" options={RELAX_OPTIONS} value={c.relax} onchange={(v) => editor.updateCausal(id, { relax: v })} />
-          <p class="help">Sans impulsion, le niveau revient doucement vers son niveau de départ.</p>
+          <Duration
+            label="Retour à l’équilibre"
+            value={c.relax}
+            {unit}
+            zero="Jamais"
+            onchange={(v) => editor.updateCausal(id, { relax: v })}
+            onunit={(u) => editor.setTimeUnit(u)}
+          />
+          <p class="help">
+            {#if c.relax > 0}
+              {c.kind === 'stock'
+                ? `Revient d’elle-même vers son niveau de départ, les deux tiers du chemin en ${formatDuration(c.relax, unit)} : une petite boucle équilibrante cachée (une fuite).`
+                : `Un appui sur ▲ ▼ s’estompe : les deux tiers en ${formatDuration(c.relax, unit)}.`}
+            {:else}
+              {c.kind === 'stock' ? 'Sans cause qui la pousse, l’accumulation garde son niveau.' : 'Un appui sur ▲ ▼ dure tant qu’on ne le compense pas.'}
+            {/if}
+          </p>
         </div>
 
         <label class="check">
           <input type="checkbox" checked={c.saturate} onchange={(e) => editor.updateCausal(id, { saturate: e.currentTarget.checked })} />
-          <span><b>Saturation</b> : plus l’élément est plein (ou vide), moins il réagit et moins il transmet.</span>
+          <span><b>Saturation</b> : plus l’élément est plein (ou vide), moins il réagit et moins il transmet. Une boucle renforçante dessine alors une courbe en S.</span>
         </label>
       </details>
 
@@ -198,6 +236,7 @@
       </div>
     {:else if edge}
       {@const id = edge.id}
+      {@const points = formatEstimate(10 * edge.weight)}
       <h2>Lien</h2>
       <p class="sentence">
         Quand <b>{edge.fromName}</b> augmente, <b>{edge.toName}</b>
@@ -217,15 +256,42 @@
         {/snippet}
       </Segmented>
 
-      <div class="field">
-        <span>Force</span>
-        <Segmented label="Force du lien" options={WEIGHT_OPTIONS} value={edge.weight} onchange={(v) => editor.updateEdge(id, { weight: v })} />
-      </div>
+      <label class="field">
+        <span>Force <em>×{formatEstimate(edge.weight)}</em></span>
+        <input
+          type="range"
+          min="0"
+          max={WEIGHT_STEPS}
+          value={weightToSlider(edge.weight)}
+          oninput={(e) => editor.updateEdge(id, { weight: sliderToWeight(+e.currentTarget.value) }, 'weight:' + id)}
+        />
+      </label>
+      <p class="help">
+        Si <b>{edge.fromName}</b> est 10 points au-dessus de son départ,
+        {#if edge.toStock}
+          <b>{edge.toName}</b> {edge.polarity === 1 ? 'monte' : 'baisse'} de {points} points par {unitName(unit, 1)}{edge.delay > 0 ? ' (une fois le retard passé)' : ''}.
+        {:else}
+          <b>{edge.toName}</b> est {points} points {edge.polarity === 1 ? 'au-dessus' : 'en dessous'} du sien{edge.delay > 0 ? ', une fois le retard passé' : ''}.
+        {/if}
+      </p>
 
       <div class="field">
         <span>Retard</span>
-        <Segmented label="Retard du lien" options={DELAY_OPTIONS} value={edge.delay} onchange={(v) => editor.updateEdge(id, { delay: v })} />
-        <p class="help">L’effet met plus de temps à arriver. Les retards font souvent osciller les boucles équilibrantes.</p>
+        <Duration
+          label="Retard du lien"
+          value={edge.delay}
+          {unit}
+          zero="Aucun"
+          onchange={(v) => editor.updateEdge(id, { delay: v })}
+          onunit={(u) => editor.setTimeUnit(u)}
+        />
+        <p class="help">
+          {edge.delay > 0
+            ? `L’effet arrive progressivement, en moyenne au bout de ${formatDuration(edge.delay, unit)}.`
+            : 'L’effet est immédiat.'}
+          Dans une boucle équilibrante, un retard long par rapport à son temps de réaction la fait osciller : touche l’étiquette de la boucle pour savoir à partir de quand.
+          <button class="why" onclick={() => help.show(SECTIONS.delay)}>Comment marche un retard ?</button>
+        </p>
       </div>
 
       <div class="actions">
@@ -238,6 +304,7 @@
         </button>
       </div>
     {:else if loop}
+      {@const a = loop.analysis}
       <h2 class="loop-title" class:r={loop.kind === 'R'}>
         <span class="loop-badge">{loop.kind}</span>
         Boucle {loop.kind === 'R' ? 'renforçante' : 'équilibrante'}
@@ -257,6 +324,20 @@
         un nombre {loop.negatives % 2 === 0 ? 'pair' : 'impair'}, donc
         {loop.kind === 'R' ? 'les effets s’additionnent.' : 'l’effet finit par se retourner contre lui-même.'}
       </p>
+
+      <section class="analysis" class:warn={a.verdict === 'instant' || a.verdict === 'unstable'}>
+        <h3>Son rythme</h3>
+        <p>{#each richText(a.text) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}</p>
+        <dl class="facts">
+          <div><dt>Accumulations</dt><dd>{a.stocks}</dd></div>
+          <div><dt>Retard total</dt><dd>{a.delay > 0 ? formatDuration(a.delay, unit) : 'aucun'}</dd></div>
+          <div><dt>Forces</dt><dd>×{formatEstimate(a.gain)}</dd></div>
+        </dl>
+        <p class="help">
+          Estimation pour la boucle seule : saturations, seuils et autres boucles peuvent changer la donne.
+          <button class="why" onclick={() => help.show(loopSection(a))}>Pourquoi ?</button>
+        </p>
+      </section>
     {/if}
   </aside>
 {/if}
@@ -274,6 +355,12 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+  }
+
+  /* Présentation : pas de barre du haut, et le bas de l'écran appartient à la carte du récit. */
+  .inspector.present {
+    top: 16px;
+    max-height: calc(100% - 320px);
   }
 
   h2 {
@@ -395,6 +482,89 @@
     color: var(--ink-soft);
   }
 
+  .help b {
+    color: var(--ink);
+  }
+
+  /* Lien vers la documentation, au fil du texte. */
+  .why {
+    display: inline;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-weight: 800;
+    color: var(--slate-stroke);
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .why::after {
+    content: ' →';
+  }
+
+  /* Analyse de la boucle : une petite carte creusée dans la carte. */
+  .analysis {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--paper-deep) 45%, transparent);
+    box-shadow: inset 0 1px 3px var(--shadow);
+  }
+
+  .analysis.warn {
+    background: color-mix(in srgb, var(--negative) 14%, var(--card));
+  }
+
+  .analysis h3 {
+    margin: 0;
+    font-family: var(--font-title);
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .analysis p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .analysis p.help {
+    font-size: 12px;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
+    font-size: 12.5px;
+  }
+
+  .facts div {
+    display: flex;
+    gap: 4px;
+  }
+
+  .facts dt {
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+
+  .facts dt::after {
+    content: ' :';
+  }
+
+  .facts dd {
+    margin: 0;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
   .check {
     display: flex;
     gap: 10px;
@@ -503,6 +673,11 @@
       max-height: 40vh;
       padding: 12px 14px 10px;
       gap: 10px;
+    }
+    .inspector.present {
+      top: max(12px, env(safe-area-inset-top));
+      bottom: auto;
+      max-height: 45vh;
     }
     h2 {
       font-size: 17px;

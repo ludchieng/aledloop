@@ -1,0 +1,978 @@
+import { doc, STOCK, type Example } from './exampleKit';
+
+/**
+ * Deuxième série d'exemples : industrie et ressources, écosystèmes, société, psychologie, ressources
+ * humaines, macroéconomie, histoire, ingénierie. Certains récits sont longs (10 à 18 étapes) : ils sont
+ * pensés pour un professeur qui veut dérouler un phénomène complexe en classe.
+ */
+export const MORE_EXAMPLES: Example[] = [
+  // --- Premiers pas -----------------------------------------------------------------------
+
+  {
+    id: 'larsen',
+    title: 'Effet Larsen',
+    description: 'Le micro capte le haut-parleur, qui diffuse ce que capte le micro… Jusqu’au sifflement. Une boucle renforçante qu’on entend.',
+    level: 1,
+    topic: 'technique',
+    shows: 'Emballement',
+    build: () =>
+      doc({
+        unit: 'second',
+        horizon: 20,
+        nodes: [
+          ['voix', 'Voix', 'sage', -420, -120, 48],
+          ['micro', 'Micro', 'slate', -150, -120, 54],
+          ['ampli', 'Ampli', 'ochre', 150, -120, 54],
+          ['son', 'Son dans la salle', 'terracotta', 0, 130, 64, { kind: 'stock', relax: 1 }],
+        ],
+        edges: [
+          ['voix', 'micro', 1, 0, { weight: 0.1 }],
+          ['micro', 'ampli', 1, -30],
+          ['ampli', 'son', 1, -30, { weight: 1.1 }],
+          ['son', 'micro', 1, -30, { weight: 0.8 }],
+        ],
+        story: [
+          ['Une **voix** dans un **micro**, amplifiée par l’**ampli**, diffusée dans la **salle**.', ['voix', 'micro', 'ampli', 'son', 'voix>micro', 'micro>ampli', 'ampli>son'], ['voix', 1]],
+          [
+            'Mais le micro capte aussi le **son de la salle**… qui est à nouveau amplifié. Une **boucle renforçante** : chaque tour ajoute un peu de son.',
+            ['micro', 'ampli', 'son', 'micro>ampli', 'ampli>son', 'son>micro'],
+          ],
+          [
+            'Ici, le son s’éteint un peu à chaque tour (la salle l’absorbe) : il **résonne** mais reste stable. Touche l’étiquette **R** : il est amplifié environ ×8.',
+            [],
+          ],
+          [
+            'Monte la force du lien Ampli → Son (le volume) au-delà de 1,3 dans l’éditeur : la boucle l’emporte sur l’absorption de la salle, et c’est le **sifflement** du Larsen. Pour l’arrêter : baisser le volume, ou éloigner le micro (affaiblir le lien Son → Micro).',
+            ['ampli>son', 'son>micro'],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'porc',
+    title: 'Le cycle du porc',
+    description: 'Quand le prix du porc est haut, les éleveurs agrandissent leurs élevages… mais les porcs arrivent un an et demi plus tard, et le prix s’effondre.',
+    level: 1,
+    topic: 'economie',
+    shows: 'Cycles de prix',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 20,
+        nodes: [
+          ['demande', 'Demande de porc', 'sand', -400, 0, 50],
+          ['prix', 'Prix du porc', 'terracotta', -110, 0, 60],
+          ['elevages', 'Élevages', 'sage', 260, 0, 64, STOCK],
+        ],
+        edges: [
+          ['demande', 'prix', 1, 0],
+          ['prix', 'elevages', 1, 50, { weight: 1.2, delay: 1.5 }],
+          ['elevages', 'prix', -1, 50],
+        ],
+        story: [
+          ['La **demande** de porc augmente : le **prix** monte.', ['demande', 'prix', 'demande>prix'], ['demande', 1]],
+          [
+            'Bonne affaire : les éleveurs agrandissent leurs **élevages**. Mais entre la décision et les porcs à vendre, il faut un an et demi (le retard).',
+            ['prix', 'elevages', 'prix>elevages'],
+          ],
+          [
+            'Quand tous les porcs arrivent en même temps, il y en a trop : le prix **s’effondre**. Les éleveurs réduisent… et un an et demi plus tard, on en manque. Le prix remonte : c’est le **cycle du porc**, connu des économistes depuis les années 1930.',
+            ['prix', 'elevages', 'prix>elevages', 'elevages>prix'],
+          ],
+          ['Le même mécanisme touche le café, le cacao, les pommes de terre… tout ce qui met du temps à produire.', []],
+        ],
+      }),
+  },
+  {
+    id: 'trafic',
+    title: 'Le trafic induit',
+    description: 'Une nouvelle route désengorge… pour quelques années. Moins de bouchons attirent plus de voitures, et les bouchons reviennent.',
+    level: 1,
+    topic: 'societe',
+    shows: 'Retour à l’équilibre',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 15,
+        nodes: [
+          ['routes', 'Nouvelles routes', 'sand', -420, -60, 50],
+          ['bouchons', 'Bouchons', 'terracotta', -120, -60, 60],
+          ['attrait', 'Attrait de la voiture', 'ochre', 180, -230, 54],
+          ['voitures', 'Voitures sur la route', 'slate', 180, 120, 64, STOCK],
+          ['transports', 'Transports en commun', 'sage', 480, 120, 52],
+        ],
+        edges: [
+          ['routes', 'bouchons', -1, 0],
+          ['bouchons', 'attrait', -1, -40],
+          ['attrait', 'voitures', 1, -40, { weight: 0.5 }],
+          ['voitures', 'bouchons', 1, -40],
+          ['transports', 'voitures', -1, 0, { weight: 0.3 }],
+        ],
+        story: [
+          ['Une ville embouteillée construit de **nouvelles routes**. Les **bouchons** diminuent tout de suite.', ['routes', 'bouchons', 'routes>bouchons'], ['routes', 1]],
+          [
+            'Mais une route fluide rend la **voiture plus attirante** : certains quittent le bus, d’autres déménagent plus loin… Les **voitures** arrivent, peu à peu.',
+            ['bouchons', 'attrait', 'voitures', 'bouchons>attrait', 'attrait>voitures'],
+          ],
+          [
+            'Plus de voitures, plus de bouchons : la boucle équilibrante ramène les bouchons **à leur niveau de départ**. Il y a juste plus de voitures. C’est le **trafic induit**, observé partout dans le monde.',
+            ['bouchons', 'attrait', 'voitures', 'bouchons>attrait', 'attrait>voitures', 'voitures>bouchons'],
+          ],
+          ['À toi : recommence (↺) et développe plutôt les **transports en commun**.', ['transports']],
+        ],
+      }),
+  },
+  {
+    id: 'rumeur',
+    title: 'Une rumeur virale',
+    description: 'Chacun la partage à ses amis, qui la partagent… puis tout le monde la connaît, et on s’en lasse. Une flambée, puis l’oubli.',
+    level: 1,
+    topic: 'societe',
+    shows: 'Flambée et lassitude',
+    build: () =>
+      doc({
+        unit: 'day',
+        horizon: 20,
+        nodes: [
+          ['buzz', 'Publication', 'sand', -420, -60, 48],
+          ['partages', 'Partages', 'terracotta', -110, -60, 58, { init: 0.1 }],
+          ['courant', 'Gens qui en parlent', 'sage', 220, -60, 64, { kind: 'stock', init: 0.05, saturate: true }],
+          ['lassitude', 'Lassitude', 'plum', 60, 220, 56, { kind: 'stock', init: 0.1, relax: 6 }],
+        ],
+        edges: [
+          ['buzz', 'partages', 1, 0],
+          ['partages', 'courant', 1, 40, { weight: 0.6 }],
+          ['courant', 'partages', 1, 40, { weight: 1.2 }],
+          ['courant', 'lassitude', 1, -30, { weight: 0.4, delay: 2 }],
+          ['lassitude', 'partages', -1, -30, { weight: 2 }],
+        ],
+        story: [
+          ['Une **publication** surprenante. Quelques personnes la **partagent**.', ['buzz', 'partages', 'buzz>partages'], ['buzz', 1]],
+          [
+            'Chaque personne **qui en parle** la partage à son tour : une **boucle renforçante**, la rumeur devient virale.',
+            ['partages', 'courant', 'partages>courant', 'courant>partages'],
+          ],
+          [
+            'Mais au bout de quelques jours, tout le monde l’a vue : la **lassitude** s’installe, on ne partage plus. Les partages retombent aussi vite qu’ils étaient montés.',
+            ['courant', 'lassitude', 'partages', 'courant>lassitude', 'lassitude>partages'],
+          ],
+          ['Regarde les courbes : une flambée, puis l’oubli. La plupart des « buzz » suivent cette forme.', []],
+        ],
+      }),
+  },
+  {
+    id: 'eau',
+    title: 'Le cycle de l’eau',
+    description: 'L’océan s’évapore, la vapeur fait la pluie, la pluie rejoint les rivières, puis l’océan. Plus chaud, et tout le cycle accélère.',
+    level: 1,
+    topic: 'nature',
+    shows: 'Cycle de matière',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 24,
+        nodes: [
+          ['temperature', 'Température', 'terracotta', -500, -270, 50],
+          ['ocean', 'Océans', 'slate', -420, 20, 66, { kind: 'stock', init: 0.7 }],
+          ['evaporation', 'Évaporation', 'sand', -180, -230, 54],
+          ['vapeur', 'Vapeur d’eau', 'sage', 180, -230, 60, { kind: 'stock', init: 0.4 }],
+          ['pluie', 'Pluies', 'slate', 420, 20, 56],
+          ['sols', 'Sols et rivières', 'ochre', 180, 270, 62, { kind: 'stock', init: 0.4 }],
+          ['ecoulement', 'Écoulement', 'slate', -180, 270, 54],
+        ],
+        edges: [
+          ['temperature', 'evaporation', 1, 0, { weight: 0.5 }],
+          ['ocean', 'evaporation', 1, 25, { weight: 0.5 }],
+          ['evaporation', 'ocean', -1, 25, { weight: 0.3 }],
+          ['evaporation', 'vapeur', 1, -20, { weight: 0.3 }],
+          ['vapeur', 'pluie', 1, 25],
+          ['pluie', 'vapeur', -1, 25, { weight: 0.3 }],
+          ['pluie', 'sols', 1, -20, { weight: 0.3 }],
+          ['sols', 'ecoulement', 1, 25],
+          ['ecoulement', 'sols', -1, 25, { weight: 0.3 }],
+          ['ecoulement', 'ocean', 1, -20, { weight: 0.3 }],
+        ],
+        story: [
+          ['L’eau de la planète circule entre trois grands réservoirs : les **océans**, la **vapeur d’eau** dans l’air, les **sols et rivières**.', ['ocean', 'vapeur', 'sols']],
+          ['Le soleil fait **s’évaporer** l’océan. La vapeur se condense en nuages, puis en **pluies**.', ['ocean', 'evaporation', 'vapeur', 'pluie', 'evaporation>ocean', 'evaporation>vapeur', 'vapeur>pluie']],
+          [
+            'La pluie remplit les sols et les rivières, qui **s’écoulent** vers l’océan. La boucle est bouclée : c’est un **cycle**. Ce qui quitte un réservoir arrive dans le suivant, rien ne se perd.',
+            ['pluie', 'sols', 'ecoulement', 'ocean', 'pluie>sols', 'sols>ecoulement', 'ecoulement>sols', 'ecoulement>ocean'],
+          ],
+          [
+            'Le climat se réchauffe : plus d’**évaporation**, donc plus de vapeur… et plus de **pluies**. L’eau ne disparaît pas, elle circule plus vite. Un climat plus chaud, c’est un cycle de l’eau plus intense : sécheresses ici, pluies violentes là.',
+            ['temperature', 'evaporation', 'vapeur', 'pluie', 'temperature>evaporation'],
+            ['temperature', 1],
+          ],
+        ],
+      }),
+  },
+
+  // --- Plusieurs boucles ------------------------------------------------------------------
+
+  {
+    id: 'casseroles',
+    title: 'Une usine de casseroles',
+    description: 'Une grosse commande arrive : on produit plus, l’acier s’épuise, on en recommande… qui arrive trois semaines plus tard. Les stocks font les montagnes russes.',
+    level: 2,
+    topic: 'industrie',
+    shows: 'Goulot et oscillations',
+    build: () =>
+      doc({
+        unit: 'week',
+        horizon: 30,
+        nodes: [
+          ['commandes', 'Commandes des clients', 'sand', -460, -150, 52],
+          ['carnet', 'Carnet de commandes', 'plum', -180, -150, 62, { kind: 'stock', init: 0.3 }],
+          ['production', 'Production', 'ochre', 120, -150, 58],
+          ['acier', 'Stock d’acier', 'slate', 120, 150, 62, { kind: 'stock', init: 0.6 }],
+          ['reassort', 'Commandes d’acier', 'sage', -180, 180, 56],
+        ],
+        edges: [
+          ['commandes', 'carnet', 1, 0, { weight: 0.5 }],
+          ['carnet', 'production', 1, 40],
+          ['production', 'carnet', -1, 40, { weight: 0.5 }],
+          ['acier', 'production', 1, 30, { weight: 0.6 }],
+          ['production', 'acier', -1, 30, { weight: 0.5 }],
+          ['acier', 'reassort', -1, -30],
+          ['reassort', 'acier', 1, -30, { weight: 0.5, delay: 3 }],
+        ],
+        story: [
+          ['Une usine fabrique des **casseroles**. Les **commandes** des clients s’empilent dans le **carnet de commandes**.', ['commandes', 'carnet', 'commandes>carnet']],
+          ['L’usine **produit** pour vider le carnet : une **boucle équilibrante**.', ['carnet', 'production', 'carnet>production', 'production>carnet']],
+          ['Une grosse commande arrive (un magasin qui ouvre).', ['commandes'], ['commandes', 1]],
+          [
+            'La production s’accélère… et consomme l’**acier** plus vite. Moins d’acier, et la production ralentit : l’acier devient le **goulot d’étranglement**.',
+            ['production', 'acier', 'production>acier', 'acier>production'],
+          ],
+          [
+            'On **recommande de l’acier**, mais il arrive trois semaines plus tard. Entre-temps, on en recommande encore : quand tout arrive, le stock déborde. Puis on en recommande trop peu… Les **stocks oscillent**.',
+            ['acier', 'reassort', 'acier>reassort', 'reassort>acier'],
+          ],
+          ['Dans l’éditeur, raccourcis le délai de livraison de l’acier à une semaine, puis allonge-le à six : regarde le stock d’acier.', ['reassort>acier']],
+        ],
+      }),
+  },
+  {
+    id: 'bois',
+    title: 'La filière bois',
+    description: 'On coupe aujourd’hui ce qui a été planté il y a trente ans. Quand la demande s’emballe, la forêt recule… et la replantation met une génération à répondre.',
+    level: 2,
+    topic: 'industrie',
+    shows: 'Retard d’une génération',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 100,
+        nodes: [
+          ['demande', 'Demande de bois', 'sand', -480, -170, 52],
+          ['coupes', 'Coupes', 'ochre', -180, -170, 56],
+          ['prix', 'Prix du bois', 'terracotta', 160, -170, 58],
+          ['foret', 'Forêt exploitable', 'sage', 160, 150, 66, { kind: 'stock', init: 0.6 }],
+          ['plantations', 'Replantations', 'sage', -180, 150, 54],
+        ],
+        edges: [
+          ['demande', 'coupes', 1, 0],
+          ['coupes', 'foret', -1, 0, { weight: 0.05 }],
+          ['foret', 'prix', -1, 0],
+          ['prix', 'coupes', -1, 0, { weight: 0.3 }],
+          ['foret', 'plantations', -1, 0],
+          ['plantations', 'foret', 1, 0, { weight: 0.05, delay: 30 }],
+        ],
+        story: [
+          ['La **demande de bois** augmente (construction, chauffage, papier) : on **coupe** davantage.', ['demande', 'coupes', 'demande>coupes'], ['demande', 1]],
+          ['La **forêt exploitable** diminue.', ['coupes', 'foret', 'coupes>foret']],
+          [
+            'Moins de forêt, c’est du bois plus rare, donc plus **cher** : on en achète moins, ce qui freine les coupes. Une **boucle équilibrante**.',
+            ['foret', 'prix', 'coupes', 'foret>prix', 'prix>coupes', 'coupes>foret'],
+          ],
+          [
+            'Pour compenser, on **replante** quand la forêt recule. Mais un arbre met **30 ans** à être exploitable : pendant une génération, rien ne vient, et la forêt continue de reculer.',
+            ['foret', 'plantations', 'foret>plantations', 'plantations>foret'],
+          ],
+          [
+            'Puis les plantations des premières années arrivent à maturité : la forêt se reconstitue, et le prix redescend. Regarde la courbe : un creux qui dure près d’un demi-siècle.',
+            ['plantations', 'foret', 'prix', 'plantations>foret'],
+          ],
+          ['Ce qu’on décide aujourd’hui en forêt, ce sont nos petits-enfants qui le récoltent. Les courbes s’étalent sur un siècle.', []],
+        ],
+      }),
+  },
+  {
+    id: 'lac',
+    title: 'L’eutrophisation d’un lac',
+    description: 'Trop d’engrais : les algues prolifèrent, l’oxygène disparaît, les poissons meurent. Et au-delà d’un seuil, le lac ne revient plus en arrière.',
+    level: 2,
+    topic: 'nature',
+    shows: 'Point de bascule',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 30,
+        nodes: [
+          ['engrais', 'Engrais agricoles', 'sand', -460, -160, 52],
+          ['nutriments', 'Azote et phosphore', 'ochre', -170, -160, 62, { kind: 'stock', init: 0.3, relax: 3 }],
+          ['algues', 'Algues', 'sage', 150, -160, 62, { kind: 'stock', init: 0.3, relax: 0.5 }],
+          ['oxygene', 'Oxygène', 'slate', 150, 160, 62, { kind: 'stock', init: 0.7, relax: 0.5 }],
+          ['anoxie', 'Fond sans oxygène', 'plum', -170, 160, 58, { init: 0.3, thresholdMode: 'tip', threshold: 0.65 }],
+          ['poissons', 'Poissons', 'slate', 450, 160, 56, { kind: 'stock', init: 0.6, relax: 3 }],
+        ],
+        edges: [
+          ['engrais', 'nutriments', 1, 0, { weight: 0.4 }],
+          ['nutriments', 'algues', 1, -30, { weight: 2 }],
+          ['algues', 'oxygene', -1, -30, { weight: 1.5 }],
+          ['oxygene', 'anoxie', -1, -30],
+          ['anoxie', 'nutriments', 1, -30, { weight: 0.25 }],
+          ['oxygene', 'poissons', 1, 0, { weight: 0.5 }],
+        ],
+        story: [
+          ['Un lac au milieu des champs. Les **engrais** apportent de l’**azote et du phosphore**.', ['engrais', 'nutriments', 'engrais>nutriments'], ['engrais', 1]],
+          ['Ces nutriments font proliférer les **algues** : l’eau verdit.', ['nutriments', 'algues', 'nutriments>algues']],
+          ['En mourant, les algues se décomposent… ce qui consomme l’**oxygène**. Les **poissons** suffoquent.', ['algues', 'oxygene', 'poissons', 'algues>oxygene', 'oxygene>poissons']],
+          [
+            'Sans oxygène au **fond**, les sédiments relâchent le phosphore qu’ils retenaient : encore plus de nutriments, encore plus d’algues. Une **boucle renforçante**.',
+            ['oxygene', 'anoxie', 'nutriments', 'oxygene>anoxie', 'anoxie>nutriments'],
+          ],
+          [
+            'Au-delà d’un seuil, c’est la **bascule** (le cadenas) : même si on arrête les engrais, le lac s’auto-entretient. Il faut des années de travaux pour le restaurer. Essaie : réduis les engrais avant, puis après la bascule.',
+            ['anoxie', 'engrais'],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'sols',
+    title: 'Sols et récoltes',
+    description: 'Pour récolter plus, on cultive plus intensément… ce qui épuise le sol. Les récoltes baissent, alors on cultive encore plus. La fuite en avant.',
+    level: 2,
+    topic: 'nature',
+    shows: 'Fuite en avant',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 30,
+        nodes: [
+          ['besoins', 'Besoins alimentaires', 'sand', -460, -150, 52],
+          ['intensite', 'Culture intensive', 'ochre', -170, -150, 58],
+          ['recoltes', 'Récoltes', 'sage', 150, -150, 60],
+          ['fertilite', 'Fertilité du sol', 'ochre', 0, 160, 66, { kind: 'stock', init: 0.6, relax: 15 }],
+          ['jachere', 'Jachère et rotations', 'sage', 330, 160, 54],
+        ],
+        edges: [
+          ['besoins', 'intensite', 1, 0],
+          ['intensite', 'recoltes', 1, 0, { weight: 0.5 }],
+          ['fertilite', 'recoltes', 1, 30],
+          ['intensite', 'fertilite', -1, 30, { weight: 0.15 }],
+          ['recoltes', 'intensite', -1, -50, { weight: 0.8, delay: 1 }],
+          ['jachere', 'fertilite', 1, 0, { weight: 0.1 }],
+        ],
+        story: [
+          ['Les **besoins alimentaires** augmentent : on pousse la **culture intensive**, les **récoltes** montent.', ['besoins', 'intensite', 'recoltes', 'besoins>intensite', 'intensite>recoltes'], ['besoins', 1]],
+          ['Mais un sol trop sollicité s’épuise : sa **fertilité** baisse, petit à petit.', ['intensite', 'fertilite', 'intensite>fertilite']],
+          [
+            'Des récoltes qui baissent, c’est un manque… qu’on compense en cultivant encore plus intensément. Ce qui épuise encore plus le sol : une **boucle renforçante**, la **fuite en avant**.',
+            ['fertilite', 'recoltes', 'intensite', 'fertilite>recoltes', 'recoltes>intensite', 'intensite>fertilite'],
+          ],
+          ['La **jachère** et la rotation des cultures laissent le sol se reconstituer. Essaie-les tôt, puis tard.', ['jachere', 'jachere>fertilite']],
+        ],
+      }),
+  },
+  {
+    id: 'ville',
+    title: 'L’attractivité d’une ville',
+    description: 'Une grande entreprise s’installe : les habitants affluent, les loyers grimpent… et la ville devient moins attirante. Les constructions arrivent après coup.',
+    level: 2,
+    topic: 'societe',
+    shows: 'Croissance et frein',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 20,
+        nodes: [
+          ['emplois', 'Emplois', 'sand', -460, -160, 52],
+          ['attractivite', 'Attractivité', 'sage', -170, -160, 58],
+          ['habitants', 'Habitants', 'plum', 150, -160, 64, { kind: 'stock', init: 0.4 }],
+          ['loyers', 'Loyers', 'terracotta', 150, 160, 58],
+          ['construction', 'Constructions', 'ochre', -10, 420, 54],
+          ['logements', 'Logements', 'slate', -170, 160, 62, { kind: 'stock', init: 0.4 }],
+        ],
+        edges: [
+          ['emplois', 'attractivite', 1, 0],
+          ['attractivite', 'habitants', 1, 0, { weight: 0.5 }],
+          ['habitants', 'loyers', 1, 0],
+          ['loyers', 'attractivite', -1, 0],
+          ['loyers', 'construction', 1, 0, { delay: 1 }],
+          ['construction', 'logements', 1, 0, { weight: 0.15, delay: 2 }],
+          ['logements', 'loyers', -1, 0],
+        ],
+        story: [
+          ['Une grande entreprise s’installe : des **emplois**, donc une ville plus **attractive**.', ['emplois', 'attractivite', 'emplois>attractivite'], ['emplois', 1]],
+          ['Les **habitants** arrivent, et les **loyers** grimpent.', ['attractivite', 'habitants', 'loyers', 'attractivite>habitants', 'habitants>loyers']],
+          ['Des loyers chers rendent la ville moins attirante : une **boucle équilibrante** freine l’arrivée de nouveaux habitants.', ['loyers', 'attractivite', 'loyers>attractivite']],
+          ['Les loyers élevés poussent à **construire**, mais il faut des années. Quand les **logements** arrivent, les loyers se détendent, et la ville redevient attirante.', ['loyers', 'construction', 'logements', 'loyers>construction', 'construction>logements', 'logements>loyers']],
+          [
+            'Au bout du compte, la ville grandit **au rythme où l’on construit** : les loyers restent un peu plus hauts qu’avant, juste assez pour que les chantiers continuent.',
+            ['habitants', 'logements', 'loyers'],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'anxiete',
+    title: 'Anxiété et évitement',
+    description: 'Éviter ce qui fait peur soulage tout de suite… mais entretient la peur. Le piège de l’évitement, et pourquoi on soigne par l’exposition.',
+    level: 2,
+    topic: 'sante',
+    shows: 'Soulagement qui piège',
+    build: () =>
+      doc({
+        unit: 'week',
+        horizon: 20,
+        nodes: [
+          ['situation', 'Situation stressante', 'sand', -460, -150, 52],
+          ['anxiete', 'Anxiété', 'plum', -150, -150, 60],
+          ['evitement', 'Évitement', 'ochre', 180, -150, 56],
+          ['peur', 'Peur de la situation', 'terracotta', 20, 160, 62, STOCK],
+          ['exposition', 'Exposition progressive', 'sage', 340, 160, 54],
+        ],
+        edges: [
+          ['situation', 'anxiete', 1, 0],
+          ['anxiete', 'evitement', 1, 40],
+          ['evitement', 'anxiete', -1, 40, { weight: 0.8, delay: 0.1 }],
+          ['evitement', 'peur', 1, -30, { weight: 0.15 }],
+          ['peur', 'anxiete', 1, -30],
+          ['exposition', 'peur', -1, 0, { weight: 0.3 }],
+          ['exposition', 'evitement', -1, 0, { weight: 0.8 }],
+        ],
+        story: [
+          ['Une **situation stressante** (prendre la parole, prendre l’avion…) déclenche de l’**anxiété**.', ['situation', 'anxiete', 'situation>anxiete'], ['situation', 1]],
+          ['Le réflexe : **éviter** la situation. Et ça marche, l’anxiété retombe tout de suite. Une boucle équilibrante rapide.', ['anxiete', 'evitement', 'anxiete>evitement', 'evitement>anxiete']],
+          [
+            'Mais chaque évitement apprend au cerveau que la situation était dangereuse : la **peur** grandit, en silence. Et plus de peur, c’est plus d’anxiété la prochaine fois. Une boucle renforçante, lente.',
+            ['evitement', 'peur', 'anxiete', 'evitement>peur', 'peur>anxiete'],
+          ],
+          ['Regarde l’anxiété sur plusieurs semaines : soulagée au début, elle remonte peu à peu.', ['anxiete']],
+          ['Les thérapies comportementales font l’inverse : une **exposition progressive**, qui fait reculer la peur et l’évitement. Essaie-la.', ['exposition', 'exposition>peur', 'exposition>evitement']],
+        ],
+      }),
+  },
+  {
+    id: 'epuisement',
+    title: 'L’épuisement au travail',
+    description: 'Du retard ? On fait des heures supplémentaires, et ça marche… un temps. Puis la fatigue fait baisser la productivité, et le retard s’accumule.',
+    level: 2,
+    topic: 'sante',
+    shows: 'Solution qui se retourne',
+    build: () =>
+      doc({
+        unit: 'week',
+        horizon: 30,
+        nodes: [
+          ['charge', 'Charge de travail', 'sand', -460, -150, 52],
+          ['retard', 'Travail en retard', 'terracotta', -160, -150, 62, { kind: 'stock', init: 0.3 }],
+          ['heures', 'Heures supplémentaires', 'ochre', 170, -150, 58, STOCK],
+          ['productivite', 'Productivité', 'sage', -160, 160, 58],
+          ['fatigue', 'Fatigue', 'plum', 170, 160, 62, { kind: 'stock', init: 0.3, relax: 2 }],
+        ],
+        edges: [
+          ['charge', 'retard', 1, 0, { weight: 0.5 }],
+          ['retard', 'heures', 1, 0, { weight: 0.8 }],
+          ['heures', 'productivite', 1, 30],
+          ['productivite', 'retard', -1, 0],
+          ['heures', 'fatigue', 1, 0, { weight: 0.3 }],
+          ['fatigue', 'productivite', -1, 0, { weight: 1.5, delay: 1 }],
+        ],
+        story: [
+          ['La **charge de travail** augmente : le **travail en retard** s’accumule.', ['charge', 'retard', 'charge>retard'], ['charge', 1]],
+          [
+            'Tant qu’il y a du retard, l’équipe ajoute des **heures supplémentaires**, semaine après semaine : la **productivité** remonte, et le retard se résorbe. Une boucle équilibrante, et ça marche !',
+            ['retard', 'heures', 'productivite', 'retard>heures', 'heures>productivite', 'productivite>retard'],
+          ],
+          [
+            'Mais les heures supplémentaires accumulent la **fatigue**, et la fatigue fait baisser la productivité. Le retard revient… alors on ajoute encore des heures. Une **boucle renforçante** : l’épuisement.',
+            ['heures', 'fatigue', 'productivite', 'retard', 'heures>fatigue', 'fatigue>productivite'],
+          ],
+          [
+            'Regarde les courbes : les heures montent jusqu’au plafond. Une fois là, plus rien ne compense la fatigue, et le retard explose.',
+            ['heures', 'retard'],
+          ],
+          ['La solution rapide (les heures sup) se retourne contre le problème. Il faudrait agir sur la **charge** elle-même : recommence (↺) et baisse-la au bout de quelques semaines.', ['charge']],
+        ],
+      }),
+  },
+  {
+    id: 'tulipes',
+    title: 'La tulipomanie (1637)',
+    description: 'Aux Pays-Bas, un bulbe de tulipe se vend le prix d’une maison. On achète pour revendre plus cher… jusqu’au jour où plus personne n’achète.',
+    level: 2,
+    topic: 'histoire',
+    shows: 'Bulle spéculative',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 24,
+        nodes: [
+          ['engouement', 'Engouement', 'sand', -440, -60, 52],
+          ['achats', 'Achats spéculatifs', 'ochre', -140, -60, 58],
+          ['prix', 'Prix des bulbes', 'terracotta', 200, -60, 66, { kind: 'stock', init: 0.2, saturate: true }],
+          ['inquietude', 'Inquiétude', 'plum', 30, 220, 54],
+        ],
+        edges: [
+          ['engouement', 'achats', 1, 0, { weight: 0.5 }],
+          ['achats', 'prix', 1, 40, { weight: 0.5 }],
+          ['prix', 'achats', 1, 40, { weight: 0.5 }],
+          ['inquietude', 'achats', -1, 0, { weight: 3 }],
+        ],
+        story: [
+          ['Hollande, années 1630. Les tulipes rares sont à la mode : l’**engouement** pousse aux **achats**.', ['engouement', 'achats', 'engouement>achats'], ['engouement', 1]],
+          [
+            'Le **prix** monte. On achète alors non plus pour la fleur, mais pour **revendre plus cher** : plus le prix monte, plus on achète. Une **boucle renforçante**, la bulle.',
+            ['achats', 'prix', 'achats>prix', 'prix>achats'],
+          ],
+          ['Au sommet, un bulbe « Semper Augustus » s’échange contre une maison d’Amsterdam.', ['prix']],
+          [
+            'Février 1637 : à une vente aux enchères de Haarlem, personne n’enchérit. L’**inquiétude** gagne.',
+            ['inquietude', 'inquietude>achats'],
+            ['inquietude', 1],
+          ],
+          [
+            'La même boucle tourne maintenant à l’envers : les prix baissent, on vend, ils baissent encore. La bulle éclate, et le prix finit bien plus bas qu’au départ.',
+            ['achats', 'prix', 'achats>prix', 'prix>achats'],
+          ],
+        ],
+      }),
+  },
+  // --- Systèmes complexes ---------------------------------------------------------------------
+
+  {
+    id: 'puces',
+    title: 'Cartes graphiques et pénurie de puces',
+    description: '2020-2023 : la demande explose, les stocks fondent, chacun commande en double… Puis les nouvelles usines arrivent toutes en même temps, et les prix s’effondrent.',
+    level: 3,
+    topic: 'industrie',
+    shows: 'Pénurie puis surplus',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 60,
+        nodes: [
+          ['demande', 'Demande (jeux, crypto, IA)', 'plum', -540, -60, 58],
+          ['stock', 'Stocks de puces', 'slate', -160, 110, 66, STOCK],
+          ['prix', 'Prix des cartes', 'terracotta', -540, 280, 58],
+          ['precaution', 'Commandes de précaution', 'ochre', -160, -240, 58],
+          ['commandes', 'Commandes aux fondeurs', 'sand', 230, -240, 58],
+          ['capacite', 'Capacité des usines', 'sage', 230, 110, 66, { kind: 'stock', relax: 18 }],
+        ],
+        edges: [
+          ['demande', 'stock', -1, 20, { weight: 0.2 }],
+          ['capacite', 'stock', 1, 0, { weight: 0.5 }],
+          ['stock', 'precaution', -1, 40],
+          ['precaution', 'stock', -1, 40, { weight: 0.1 }],
+          ['stock', 'prix', -1, 20],
+          ['demande', 'prix', 1, 30, { weight: 0.5 }],
+          ['prix', 'demande', -1, 30, { weight: 0.3, delay: 2 }],
+          ['demande', 'commandes', 1, 0],
+          ['precaution', 'commandes', 1, 0],
+          ['commandes', 'capacite', 1, 0, { weight: 0.06, delay: 18 }],
+        ],
+        story: [
+          [
+            'Les puces électroniques (processeurs graphiques, mémoire RAM) sont au cœur des cartes graphiques. Voici leur marché : des **stocks**, une **demande**, des **usines**.',
+            ['stock', 'demande', 'capacite'],
+          ],
+          ['Les usines (les « fondeurs ») produisent des puces, qui remplissent les stocks. La demande les vide.', ['capacite', 'stock', 'demande', 'capacite>stock', 'demande>stock']],
+          ['2020 : confinements, jeux vidéo, puis cryptomonnaies et intelligence artificielle. La **demande** explose.', ['demande'], ['demande', 1]],
+          ['Les stocks fondent, et le **prix** des cartes graphiques s’envole : jusqu’au double du prix conseillé.', ['stock', 'prix', 'stock>prix', 'demande>prix']],
+          [
+            'Voyant la pénurie, chaque acheteur (fabricants de cartes, de voitures, de consoles) commande plus que nécessaire, « au cas où » : des **commandes de précaution**.',
+            ['stock', 'precaution', 'stock>precaution'],
+          ],
+          [
+            'Ces commandes vident encore plus les stocks… ce qui provoque encore plus de précaution. Une **boucle renforçante** : la pénurie s’auto-entretient.',
+            ['stock', 'precaution', 'stock>precaution', 'precaution>stock'],
+          ],
+          ['Les prix élevés finissent par décourager une partie des acheteurs (une boucle équilibrante, avec retard).', ['prix', 'demande', 'prix>demande']],
+          ['Face à toutes ces **commandes**, les fondeurs décident de construire de nouvelles usines.', ['demande', 'precaution', 'commandes', 'demande>commandes', 'precaution>commandes']],
+          [
+            'Mais une usine de puces coûte des milliards et met **un an et demi à deux ans** à sortir de terre : regarde le retard sur la flèche. Pendant ce temps, la pénurie continue.',
+            ['commandes', 'capacite', 'commandes>capacite'],
+          ],
+          [
+            'Quand les nouvelles **capacités** arrivent, toutes en même temps, la demande s’est calmée et les acheteurs ont des stocks de précaution pleins : c’est le **surplus**.',
+            ['capacite', 'stock', 'capacite>stock'],
+          ],
+          ['2023 : le prix de la mémoire RAM s’effondre, des fabricants accumulent les invendus. La même boucle de précaution tourne maintenant à l’envers : on déstocke.', ['stock', 'prix', 'precaution']],
+          [
+            'C’est l’**effet coup de fouet** (« bullwhip ») : plus on remonte la chaîne, plus les oscillations sont fortes, à cause des retards et des commandes de précaution. Regarde les courbes sur 5 ans.',
+            [],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'voitures',
+    title: 'Voitures en juste-à-temps',
+    description: 'Les usines automobiles n’ont presque pas de stocks : c’est efficace… tant que rien ne manque. Une pénurie de pièces, et la production s’arrête net.',
+    level: 2,
+    topic: 'industrie',
+    shows: 'Fragilité',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 24,
+        nodes: [
+          ['livraisons', 'Livraisons de pièces', 'sand', -480, -150, 54, { relax: 3 }],
+          ['pieces', 'Pièces à l’usine', 'slate', -170, -150, 58, { kind: 'stock', relax: 0.5 }],
+          ['production', 'Production de voitures', 'ochre', 150, -150, 58],
+          ['concessions', 'Voitures en concession', 'sage', 150, 160, 64, STOCK],
+          ['ventes', 'Ventes', 'plum', -170, 160, 56],
+          ['prix', 'Prix des voitures', 'terracotta', 450, 160, 56],
+        ],
+        edges: [
+          ['livraisons', 'pieces', 1, 0, { weight: 2 }],
+          ['pieces', 'production', 1, 0, { weight: 1.5 }],
+          ['production', 'concessions', 1, 30, { weight: 0.5 }],
+          ['ventes', 'concessions', -1, 0, { weight: 0.5 }],
+          ['concessions', 'prix', -1, 0],
+          ['prix', 'ventes', -1, -60],
+        ],
+        story: [
+          [
+            'Une usine automobile en **juste-à-temps** : les **pièces** arrivent chaque jour, juste ce qu’il faut. Presque pas de stock, donc pas d’argent immobilisé. Très efficace.',
+            ['livraisons', 'pieces', 'production', 'livraisons>pieces', 'pieces>production'],
+          ],
+          ['Les voitures produites vont en **concession**, où elles sont **vendues**.', ['production', 'concessions', 'ventes', 'production>concessions', 'ventes>concessions']],
+          ['2021 : une usine de puces brûle, un porte-conteneurs bloque le canal de Suez… Les **livraisons** s’arrêtent.', ['livraisons'], ['livraisons', -1]],
+          ['Sans stock d’avance, la **production** chute presque aussitôt : des usines entières s’arrêtent.', ['pieces', 'production', 'pieces>production']],
+          ['Les concessions se vident, et le **prix** des voitures (neuves et d’occasion) grimpe.', ['concessions', 'prix', 'concessions>prix']],
+          [
+            'Les livraisons reprennent peu à peu… mais regarde les **concessions** : elles mettent bien plus longtemps à se remplir. Le choc dure plus longtemps que sa cause.',
+            ['livraisons', 'concessions', 'prix'],
+          ],
+          [
+            'Depuis, beaucoup de constructeurs gardent un **stock de sécurité** de puces : un peu moins efficace, beaucoup plus robuste. L’efficacité contre la robustesse, c’est tout le dilemme du juste-à-temps.',
+            [],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'turnover',
+    title: 'Turnover et attractivité d’une entreprise',
+    description: 'Des départs surchargent ceux qui restent, qui s’épuisent et partent à leur tour. Et la réputation s’abîme, ce qui complique les recrutements.',
+    level: 3,
+    topic: 'societe',
+    shows: 'Spirale des départs',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 36,
+        nodes: [
+          ['activite', 'Activité', 'sand', -560, -180, 52],
+          ['charge', 'Charge par personne', 'terracotta', -200, -180, 58],
+          ['epuisement', 'Épuisement', 'plum', 160, -180, 60, { kind: 'stock', relax: 6 }],
+          ['departs', 'Départs', 'ochre', 160, 120, 56],
+          ['effectif', 'Effectif', 'sage', -200, 120, 66, STOCK],
+          ['reputation', 'Réputation', 'slate', 160, 400, 60, { kind: 'stock', init: 0.6, relax: 24 }],
+          ['recrutements', 'Recrutements', 'sage', -520, 260, 56],
+          ['conditions', 'Salaires et conditions', 'sand', 480, 120, 52],
+        ],
+        edges: [
+          ['activite', 'charge', 1, 0],
+          ['effectif', 'charge', -1, 0],
+          ['charge', 'epuisement', 1, 0, { weight: 0.12 }],
+          ['epuisement', 'departs', 1, 0],
+          ['conditions', 'departs', -1, 0, { weight: 0.3 }],
+          ['departs', 'effectif', -1, 0, { weight: 0.15 }],
+          ['departs', 'reputation', -1, 0, { weight: 0.03 }],
+          ['reputation', 'recrutements', 1, 0],
+          ['charge', 'recrutements', 1, 0, { weight: 0.5 }],
+          ['recrutements', 'effectif', 1, 0, { weight: 0.15, delay: 3 }],
+          ['conditions', 'reputation', 1, 0, { weight: 0.01 }],
+        ],
+        story: [
+          ['Une entreprise et son **effectif**. Chacun porte une **charge de travail** : l’activité divisée par le nombre de personnes.', ['activite', 'charge', 'effectif', 'activite>charge', 'effectif>charge']],
+          ['Un gros contrat arrive : l’**activité** augmente.', ['activite'], ['activite', 1]],
+          ['La charge par personne grimpe, et l’**épuisement** s’accumule, mois après mois.', ['charge', 'epuisement', 'charge>epuisement']],
+          ['Épuisés, des salariés **partent**.', ['epuisement', 'departs', 'epuisement>departs']],
+          [
+            'Chaque départ réduit l’effectif… donc augmente la charge de ceux qui restent, qui s’épuisent et partent à leur tour. Une **boucle renforçante** : la spirale du turnover.',
+            ['departs', 'effectif', 'charge', 'epuisement', 'departs>effectif', 'effectif>charge', 'charge>epuisement', 'epuisement>departs'],
+          ],
+          ['L’entreprise **recrute** pour compenser, mais un recrutement prend environ trois mois (le retard).', ['charge', 'recrutements', 'effectif', 'charge>recrutements', 'recrutements>effectif']],
+          ['Pire : les départs se savent (avis en ligne, bouche-à-oreille). La **réputation** s’abîme, lentement.', ['departs', 'reputation', 'departs>reputation']],
+          ['Une mauvaise réputation, ce sont moins de candidats : les **recrutements** ralentissent. Une deuxième boucle renforçante, plus lente.', ['reputation', 'recrutements', 'reputation>recrutements']],
+          ['C’est pour ça que le turnover est si coûteux : il s’entretient tout seul, et la réputation met des années à se reconstruire.', []],
+          ['Recommence (↺) et améliore les **salaires et conditions** dès l’arrivée du contrat : moins de départs, et une réputation qui se renforce.', ['conditions', 'conditions>departs', 'conditions>reputation']],
+        ],
+      }),
+  },
+  {
+    id: 'commerce',
+    title: 'Guerre commerciale',
+    description: 'Un pays taxe les importations pour protéger son industrie. L’autre riposte. Escalade des droits de douane, et tout le monde y perd.',
+    level: 3,
+    topic: 'geopolitique',
+    shows: 'Escalade',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 36,
+        nodes: [
+          ['tarifsA', 'Droits de douane de A', 'terracotta', -300, -200, 60, { kind: 'stock', init: 0.2 }],
+          ['exportsB', 'Exportations de B vers A', 'slate', 140, -200, 58],
+          ['tarifsB', 'Droits de douane de B', 'slate', 140, 160, 60, { kind: 'stock', init: 0.2 }],
+          ['exportsA', 'Exportations de A vers B', 'terracotta', -300, 160, 58],
+          ['prixA', 'Prix pour les consommateurs de A', 'plum', -660, -200, 58],
+          ['negociation', 'Négociation', 'sage', -80, 90, 48],
+        ],
+        edges: [
+          ['tarifsA', 'exportsB', -1, -30],
+          ['exportsB', 'tarifsB', -1, -30, { weight: 0.15, delay: 3 }],
+          ['tarifsB', 'exportsA', -1, -30],
+          ['exportsA', 'tarifsA', -1, -30, { weight: 0.15, delay: 3 }],
+          ['tarifsA', 'prixA', 1, 0],
+          ['negociation', 'tarifsA', -1, 0, { weight: 0.2 }],
+          ['negociation', 'tarifsB', -1, 0, { weight: 0.2 }],
+        ],
+        story: [
+          ['Deux pays, **A** et **B**, commercent entre eux.', ['exportsA', 'exportsB']],
+          ['Pour protéger son industrie, A relève ses **droits de douane** : les produits de B deviennent plus chers chez A.', ['tarifsA', 'exportsB', 'tarifsA>exportsB'], ['tarifsA', 1]],
+          ['Premier effet, immédiat : les **consommateurs de A** paient plus cher.', ['tarifsA', 'prixA', 'tarifsA>prixA']],
+          ['Les **exportations de B** chutent. Quelques mois plus tard, B **riposte** avec ses propres droits de douane.', ['exportsB', 'tarifsB', 'exportsB>tarifsB']],
+          ['Les **exportations de A** chutent à leur tour… et A relève encore ses droits. Une **boucle renforçante** : l’escalade (comme entre les États-Unis et la Chine en 2018-2019).', ['tarifsB', 'exportsA', 'tarifsA', 'tarifsB>exportsA', 'exportsA>tarifsA']],
+          ['La **négociation** peut casser la spirale. Essaie-la tôt, puis tard.', ['negociation', 'negociation>tarifsA', 'negociation>tarifsB']],
+        ],
+      }),
+  },
+  {
+    id: 'change',
+    title: 'Dévaluation et courbe en J',
+    description: 'Une monnaie qui baisse rend les exportations moins chères… mais d’abord, les importations coûtent plus cher. La balance commerciale empire, puis s’améliore.',
+    level: 3,
+    topic: 'economie',
+    shows: 'Courbe en J',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 36,
+        nodes: [
+          ['devaluation', 'Dévaluation', 'sand', -540, 0, 52],
+          ['monnaie', 'Valeur de la monnaie', 'slate', -250, 0, 60],
+          ['importations', 'Facture des importations', 'terracotta', 60, -200, 60],
+          ['exportations', 'Exportations', 'sage', 60, 200, 60],
+          ['balance', 'Balance commerciale', 'ochre', 360, 0, 62, { kind: 'stock', relax: 6 }],
+        ],
+        edges: [
+          ['devaluation', 'monnaie', -1, 0],
+          ['monnaie', 'importations', -1, 30],
+          ['monnaie', 'exportations', -1, -30, { weight: 1.5, delay: 9 }],
+          ['importations', 'balance', -1, 30, { weight: 0.3 }],
+          ['exportations', 'balance', 1, -30, { weight: 0.3 }],
+          ['balance', 'monnaie', 1, 0, { weight: 0.3, delay: 6 }],
+        ],
+        story: [
+          ['Un pays a une **balance commerciale** déficitaire : il importe plus qu’il n’exporte. Il décide de **dévaluer** sa monnaie.', ['devaluation', 'monnaie', 'balance', 'devaluation>monnaie'], ['devaluation', 1]],
+          [
+            'Effet immédiat : les produits importés coûtent plus cher en monnaie locale. On en achète autant (les contrats sont signés) : la **facture des importations** grimpe, la balance **empire**.',
+            ['monnaie', 'importations', 'balance', 'monnaie>importations', 'importations>balance'],
+          ],
+          [
+            'Effet lent : ses produits sont moins chers à l’étranger. Les **exportations** augmentent… mais il faut le temps de trouver des clients (le retard de 9 mois).',
+            ['monnaie', 'exportations', 'balance', 'monnaie>exportations', 'exportations>balance'],
+          ],
+          ['Regarde la courbe de la balance : elle plonge, puis remonte au-dessus de son départ. C’est la **courbe en J**, observée après de nombreuses dévaluations.', ['balance']],
+          ['Et un excédent finit par faire remonter la monnaie : une boucle équilibrante, qui limite l’effet dans le temps.', ['balance', 'monnaie', 'balance>monnaie']],
+        ],
+      }),
+  },
+  {
+    id: 'keynes',
+    title: 'Le multiplicateur keynésien',
+    description: 'Un euro de dépense publique devient le revenu de quelqu’un, qui en dépense une partie, qui devient le revenu d’un autre… Au total, bien plus qu’un euro d’activité.',
+    level: 3,
+    topic: 'economie',
+    shows: 'Multiplicateur',
+    build: () =>
+      doc({
+        unit: 'month',
+        horizon: 30,
+        nodes: [
+          ['depenses', 'Dépense publique', 'sand', -480, -150, 54],
+          ['revenus', 'Activité et revenus', 'sage', -150, -150, 66, { kind: 'stock', relax: 2 }],
+          ['consommation', 'Consommation', 'ochre', -150, 170, 60],
+          ['epargne', 'Envie d’épargner', 'slate', 220, 170, 54],
+        ],
+        edges: [
+          ['depenses', 'revenus', 1, 0, { weight: 0.1 }],
+          ['revenus', 'consommation', 1, 40, { weight: 0.8 }],
+          ['consommation', 'revenus', 1, 40, { weight: 0.5 }],
+          ['epargne', 'consommation', -1, 0, { weight: 0.1 }],
+        ],
+        story: [
+          ['L’État lance un grand chantier : une **dépense publique**. Elle devient des salaires et des commandes, donc de l’**activité et des revenus**.', ['depenses', 'revenus', 'depenses>revenus'], ['depenses', 1]],
+          ['Avec ces revenus, les ménages **consomment** : une bonne partie (ici 80 %) est dépensée.', ['revenus', 'consommation', 'revenus>consommation']],
+          [
+            'Cette consommation devient le revenu des commerçants, qui consomment à leur tour… Une **boucle renforçante**. Mais à chaque tour, une partie est épargnée : elle s’affaiblit.',
+            ['revenus', 'consommation', 'revenus>consommation', 'consommation>revenus'],
+          ],
+          ['Touche l’étiquette **R** : chaque euro dépensé est amplifié environ **×5**. C’est le **multiplicateur** de Keynes (1936).', []],
+          ['Recommence (↺) en augmentant l’**envie d’épargner** (par inquiétude) : le multiplicateur fond. C’est le « paradoxe de l’épargne ».', ['epargne', 'epargne>consommation']],
+        ],
+      }),
+  },
+  {
+    id: 'crise1929',
+    title: 'La crise de 1929',
+    description: 'De la bulle boursière au krach, puis aux faillites bancaires et à la déflation : comment une crise financière devient la Grande Dépression.',
+    level: 3,
+    topic: 'histoire',
+    shows: 'Spirale déflationniste',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 12,
+        nodes: [
+          ['confiance', 'Confiance', 'sand', -620, -230, 52],
+          ['bourse', 'Cours de la Bourse', 'plum', -330, -230, 62, { kind: 'stock', saturate: true }],
+          ['speculation', 'Achats à crédit', 'ochre', -560, -450, 54],
+          ['panique', 'Panique bancaire', 'terracotta', -165, -450, 54, { init: 0.2, thresholdMode: 'tip', threshold: 0.6 }],
+          ['banques', 'Solidité des banques', 'slate', 0, -230, 64, { kind: 'stock', relax: 1.5 }],
+          ['credit', 'Crédit', 'sage', 330, -230, 56],
+          ['demande', 'Demande', 'ochre', 330, 60, 58],
+          ['prix', 'Prix', 'terracotta', 0, 140, 62, { kind: 'stock', relax: 1.5 }],
+          ['dettes', 'Poids réel des dettes', 'plum', -330, 140, 58],
+          ['chomage', 'Chômage', 'terracotta', 620, 60, 58],
+          ['relance', 'Relance (New Deal)', 'sage', 165, -450, 54],
+        ],
+        edges: [
+          ['confiance', 'bourse', 1, 0, { weight: 2 }],
+          ['bourse', 'speculation', 1, 30],
+          ['speculation', 'bourse', 1, 30, { weight: 0.3 }],
+          ['bourse', 'panique', -1, 0, { weight: 1.5 }],
+          ['panique', 'banques', -1, 0, { weight: 0.4 }],
+          ['banques', 'credit', 1, 0],
+          ['credit', 'demande', 1, 0],
+          ['demande', 'chomage', -1, 30],
+          ['chomage', 'demande', -1, 30, { weight: 0.3, delay: 0.5 }],
+          ['demande', 'prix', 1, 0, { weight: 0.3 }],
+          ['prix', 'dettes', -1, 0],
+          ['dettes', 'banques', -1, 30, { weight: 0.5 }],
+          ['relance', 'demande', 1, 0, { weight: 0.5 }],
+          ['relance', 'banques', 1, 0, { weight: 1.5 }],
+        ],
+        story: [
+          ['Années 1920 aux États-Unis : la croissance est forte, la **confiance** est au plus haut.', ['confiance'], ['confiance', 1]],
+          ['La **Bourse** monte. On emprunte pour acheter des actions : les **achats à crédit** se multiplient.', ['confiance', 'bourse', 'speculation', 'confiance>bourse', 'bourse>speculation']],
+          ['Plus la Bourse monte, plus on achète à crédit, plus elle monte : une **boucle renforçante**, la bulle.', ['bourse', 'speculation', 'bourse>speculation', 'speculation>bourse']],
+          ['Tant que la Bourse monte, personne ne s’inquiète pour son épargne : pas de **panique**, les **banques** semblent solides.', ['bourse', 'panique', 'banques', 'bourse>panique', 'panique>banques']],
+          ['Jeudi 24 octobre 1929, le « Jeudi noir » : la **confiance** s’effondre.', ['confiance'], ['confiance', -1]],
+          ['Le même mécanisme tourne à l’envers : on vend pour rembourser ses crédits, la Bourse plonge, on vend encore. C’est le **krach**.', ['confiance'], ['confiance', -1]],
+          [
+            'Les pertes boursières inquiètent les épargnants, qui vont retirer leur argent. Quand la peur franchit un seuil, c’est la **panique bancaire** (le cadenas) : tout le monde se rue aux guichets, même dans les banques saines.',
+            ['bourse', 'panique', 'bourse>panique'],
+          ],
+          ['Les **banques** se vident. Entre 1930 et 1933, plus de 9 000 banques américaines font faillite.', ['panique', 'banques', 'panique>banques']],
+          ['Des banques fragiles prêtent moins : le **crédit** se tarit, et avec lui la **demande** des entreprises et des ménages.', ['banques', 'credit', 'demande', 'banques>credit', 'credit>demande']],
+          ['Moins de demande, c’est plus de **chômage**… et des chômeurs consomment moins. Une boucle renforçante.', ['demande', 'chomage', 'demande>chomage', 'chomage>demande']],
+          ['Moins de demande fait aussi baisser les **prix** : c’est la **déflation**.', ['demande', 'prix', 'demande>prix']],
+          [
+            'Le piège, décrit par l’économiste Irving Fisher en 1933 : quand les prix baissent, les **dettes** pèsent plus lourd (on rembourse le même montant avec des revenus qui fondent).',
+            ['prix', 'dettes', 'prix>dettes'],
+          ],
+          [
+            'Les emprunteurs font défaut, ce qui fragilise encore les banques : moins de crédit, moins de demande, des prix plus bas, des dettes plus lourdes… La **spirale de la déflation par la dette**.',
+            ['dettes', 'banques', 'credit', 'demande', 'prix', 'dettes>banques', 'banques>credit', 'credit>demande', 'demande>prix', 'prix>dettes'],
+          ],
+          ['En 1933, un quart des Américains sont au chômage. La production industrielle a chuté de moitié.', ['chomage']],
+          [
+            '1933 : Roosevelt lance le **New Deal**. Les grands travaux soutiennent la **demande**, et la garantie des dépôts bancaires rassure les épargnants : les banques ne se vident plus.',
+            ['relance', 'relance>demande', 'relance>banques'],
+            ['relance', 1],
+          ],
+          [
+            'La demande repart, et les boucles tournent dans le bon sens, lentement. Une leçon retenue en 2008 : les banques centrales ont tout fait pour éviter la déflation.',
+            ['relance', 'demande', 'prix', 'banques'],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'reacteur',
+    title: 'Un réacteur nucléaire',
+    description: 'La réaction en chaîne, les barres de contrôle, les neutrons retardés qui rendent le pilotage possible, l’effet Doppler qui stabilise… et ce qui a mal tourné à Tchernobyl.',
+    level: 3,
+    topic: 'technique',
+    shows: 'Contrôle et emballement',
+    build: () =>
+      doc({
+        unit: 'second',
+        horizon: 120,
+        nodes: [
+          ['neutrons', 'Neutrons', 'slate', -300, -150, 64, STOCK],
+          ['fissions', 'Fissions (puissance)', 'terracotta', 60, -150, 62],
+          ['pertes', 'Neutrons absorbés', 'sand', -300, 160, 56],
+          ['barres', 'Barres de contrôle', 'slate', -620, 160, 54],
+          ['temperature', 'Température du combustible', 'terracotta', 380, 60, 64, { kind: 'stock', relax: 20, thresholdMode: 'tip', threshold: 0.9 }],
+          ['refroidissement', 'Refroidissement', 'sage', 660, 60, 54],
+          ['vapeur', 'Bulles de vapeur', 'sage', 380, 340, 58, { kind: 'stock', relax: 5 }],
+          ['retardes', 'Neutrons retardés', 'plum', -120, -420, 52],
+        ],
+        edges: [
+          ['neutrons', 'fissions', 1, 40],
+          ['fissions', 'neutrons', 1, 40, { weight: 0.4 }],
+          ['fissions', 'retardes', 1, -30, { weight: 0.6, delay: 10 }],
+          ['retardes', 'neutrons', 1, -30],
+          ['neutrons', 'pertes', 1, 40],
+          ['pertes', 'neutrons', -1, 40],
+          ['barres', 'pertes', 1, 0, { weight: 0.5 }],
+          ['fissions', 'temperature', 1, -30, { weight: 0.05 }],
+          ['temperature', 'fissions', -1, -30, { weight: 0.6 }],
+          ['refroidissement', 'temperature', -1, 0, { weight: 0.07 }],
+          ['temperature', 'vapeur', 1, 0, { weight: 0.2 }],
+          ['vapeur', 'fissions', 1, -60, { weight: 0.1 }],
+        ],
+        story: [
+          ['Le cœur d’un réacteur nucléaire contient de l’uranium. Quand un **neutron** frappe un noyau d’uranium, celui-ci se casse : c’est la **fission**. Elle libère de la chaleur.', ['neutrons', 'fissions', 'neutrons>fissions']],
+          ['Chaque fission libère aussi deux ou trois nouveaux neutrons… qui provoquent d’autres fissions. Une **boucle renforçante** : la **réaction en chaîne**.', ['neutrons', 'fissions', 'neutrons>fissions', 'fissions>neutrons']],
+          ['Dans une bombe, on la laisse s’emballer. Dans un réacteur, il faut la maintenir parfaitement stable : chaque fission doit en provoquer **exactement une** autre.', []],
+          ['Une partie des neutrons est **absorbée** sans provoquer de fission (par l’eau, l’acier, d’autres noyaux) : une boucle équilibrante.', ['neutrons', 'pertes', 'neutrons>pertes', 'pertes>neutrons']],
+          ['Les **barres de contrôle** sont faites d’un matériau qui avale les neutrons. Enfoncées, elles en absorbent plus ; retirées, moins.', ['barres', 'pertes', 'barres>pertes']],
+          ['Lançons le réacteur : on **retire un peu les barres**.', ['barres'], ['barres', -1]],
+          ['Moins de neutrons absorbés : la population de neutrons augmente, et la **puissance** monte.', ['neutrons', 'fissions', 'pertes']],
+          [
+            'Remarque : la puissance monte doucement, sur des dizaines de secondes. Pourquoi ? Parce que les neutrons arrivent en deux temps.',
+            ['fissions', 'neutrons'],
+          ],
+          [
+            'La plupart des neutrons sont **prompts** : ils sortent en un millionième de seconde. Mais une petite fraction est **retardée** : émise des secondes plus tard par les débris de fission : ce sont les **neutrons retardés** (les traits sur la flèche indiquent le retard).',
+            ['fissions', 'retardes', 'neutrons', 'fissions>retardes', 'retardes>neutrons'],
+          ],
+          [
+            'Ce sont ces **neutrons retardés** qui rendent le réacteur pilotable : sans eux, la puissance changerait trop vite pour qu’aucun opérateur ni aucune machine ne réagisse. Un retard qui, cette fois, sauve tout.',
+            ['fissions', 'retardes', 'neutrons', 'fissions>retardes', 'retardes>neutrons'],
+          ],
+          ['Plus de fissions, c’est plus de chaleur : la **température du combustible** monte.', ['fissions', 'temperature', 'fissions>temperature']],
+          [
+            'Or un combustible plus chaud absorbe davantage de neutrons sans fissionner (l’**effet Doppler**) : les fissions diminuent. Une **boucle équilibrante** naturelle, qui stabilise le réacteur sans intervention.',
+            ['temperature', 'fissions', 'temperature>fissions'],
+          ],
+          ['Le **refroidissement** (l’eau qui circule) évacue la chaleur vers les turbines : c’est elle qui fait l’électricité.', ['refroidissement', 'temperature', 'refroidissement>temperature']],
+          ['Que se passe-t-il si le refroidissement faiblit ? Une pompe tombe en panne…', ['refroidissement', 'temperature'], ['refroidissement', -1]],
+          ['La température monte… mais l’effet Doppler fait baisser la puissance : le réacteur se calme de lui-même. C’est voulu : les réacteurs sont conçus pour ça.', ['temperature', 'fissions', 'temperature>fissions']],
+          [
+            'Dans certains réacteurs, l’eau chaude se met à bouillir : des **bulles de vapeur**. Moins d’eau, c’est moins de neutrons absorbés… donc plus de fissions. Une boucle **renforçante** (le « coefficient de vide positif »).',
+            ['temperature', 'vapeur', 'fissions', 'temperature>vapeur', 'vapeur>fissions'],
+          ],
+          [
+            'Tchernobyl, 26 avril 1986 : dans ce type de réacteur, à basse puissance, la boucle des bulles l’emportait sur l’effet Doppler. Pour le voir, monte la force du lien Bulles → Fissions au-delà de 0,6 (par exemple 1) dans l’éditeur, puis relance.',
+            ['vapeur>fissions'],
+          ],
+          [
+            'Si la température franchit le seuil (la ligne pointillée rouge), c’est la **fusion du cœur** : irréversible, un cadenas apparaît. Les réacteurs construits depuis sont conçus pour que les boucles équilibrantes l’emportent toujours.',
+            ['temperature'],
+          ],
+        ],
+      }),
+  },
+];

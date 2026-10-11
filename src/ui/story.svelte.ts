@@ -1,7 +1,7 @@
 import { editor } from '../model/editor.svelte';
 import { sim } from '../sim/session.svelte';
 
-/** Délai entre l'arrivée sur une étape et son impulsion : le temps que la vue se pose. */
+/** Délai entre l'arrivée sur une étape et son action : le temps que la vue se pose. */
 const PULSE_DELAY_MS = 900;
 
 /** État du panneau « Récit » (édition). */
@@ -40,9 +40,11 @@ class Presenter {
 
   go(i: number) {
     this.index = Math.max(0, Math.min(this.count - 1, i));
+    // Une boucle ouverte à l'étape précédente masquerait la mise en avant de la nouvelle étape.
+    if (editor.selection?.kind === 'loop') editor.selection = null;
     clearTimeout(this.timer);
     const pulse = editor.doc.story.steps[this.index]?.pulse;
-    if (pulse) this.timer = setTimeout(() => sim.engine?.pulse(pulse.node, pulse.delta), PULSE_DELAY_MS);
+    if (pulse) this.timer = setTimeout(() => sim.push(pulse.node, pulse.delta), PULSE_DELAY_MS);
   }
 
   next() {

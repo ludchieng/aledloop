@@ -11,9 +11,10 @@ import {
   type StoryStep,
   type SysEdge,
   type SysNode,
+  type TimeUnit,
 } from './types';
 
-export type Tool = 'pen' | 'hand' | 'eraser';
+export type Tool = 'select' | 'pen' | 'eraser';
 /** edit : édition ; sim : simulation libre ; present : récit pas à pas (avec simulation). */
 export type Mode = 'edit' | 'sim' | 'present';
 export type Selection = { kind: 'node' | 'edge' | 'loop'; id: string } | null;
@@ -228,6 +229,22 @@ export class Editor {
     if (!node) return;
     this.checkpoint(key);
     node.causal = { ...node.causal, ...patch };
+    this.changed();
+  }
+
+  /** Unité de temps du document : elle renomme les durées sans changer les calculs. */
+  setTimeUnit(unit: TimeUnit) {
+    if (this.doc.timeUnit === unit) return;
+    this.checkpoint();
+    this.doc.timeUnit = unit;
+    this.changed();
+  }
+
+  /** Durée de simulation (en unités de temps). */
+  setHorizon(horizon: number) {
+    if (this.doc.horizon === horizon || horizon <= 0) return;
+    this.checkpoint('horizon');
+    this.doc.horizon = horizon;
     this.changed();
   }
 

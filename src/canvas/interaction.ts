@@ -1,5 +1,5 @@
 import type { Editor } from '../model/editor.svelte';
-import type { LoopySim } from '../sim/loopy';
+import type { CausalSim } from '../sim/causal';
 import type { Camera } from './camera';
 import {
   bendThrough,
@@ -8,6 +8,7 @@ import {
   distToEdge,
   edgeGeom,
   hitTest,
+  insideNode,
   loopAt,
   nodeAt,
   nodeById,
@@ -38,7 +39,9 @@ type Gesture =
 export interface Host {
   editor: Editor;
   camera: Camera;
-  sim(): LoopySim | null;
+  sim(): CausalSim | null;
+  /** Appui ▲ ▼ sur un nœud pendant la simulation. */
+  push(id: string, delta: 1 | -1): void;
   /** Étiquettes R / B visibles (vide si masquées). */
   loopLabels(): LoopLabel[];
   /** Éléments pas encore apparus dans le récit (présentation). */
@@ -56,6 +59,8 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
   hover: Hit = null;
   linkTarget: string | null = null;
   trail: Overlay['trail'] = null;
+  /** Dernier tracé du crayon et l'instant du relâchement : il reste visible un moment en s'estompant. */
+  ghost: { points: Pt[]; at: number } | null = null;
   erasing = new Set<string>();
   pulseHover: Overlay['pulseHover'] = null;
   spaceDown = false;
@@ -134,7 +139,7 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
       const node = this.visibleNodeAt(w, pad / 2);
       const sim = this.host.sim();
       if (node && sim) {
-        sim.pulse(node.id, w.y < node.y ? 1 : -1);
+        this.host.push(node.id, w.y < node.y ? 1 : -1);
         this.g = { kind: 'ignore' };
       } else {
         this.startPan(p, true);
@@ -151,11 +156,14 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
           break;
         }
         const node = nodeAt(editor.doc, w, pad / 2);
-        this.g = { kind: 'stroke', points: [w], startNode: node?.id ?? null, start: p };
-        this.trail = { points: [w], kind: 'pen' };
+        // Le geste et la traînée partagent la même liste : chaque point ajouté se voit aussitôt.
+        const points = [w];
+        this.g = { kind: 'stroke', points, startNode: node?.id ?? null, start: p };
+        this.trail = { points, kind: 'pen' };
         break;
       }
-      case 'hand': {
+      // Sélection : déplacer un galet, courber un lien, ou déplacer la vue dans le vide.
+      case 'select': {
         if (hit?.kind === 'badge') {
           this.g = { kind: 'tapBadge', id: hit.id, start: p, moved: false };
         } else if (hit?.kind === 'node') {
@@ -277,6 +285,7 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
 
     switch (g.kind) {
       case 'stroke':
+        this.ghost = { points: g.points, at: performance.now() };
         this.finishStroke(g.points, g.startNode, p);
         break;
       case 'erase':
@@ -419,7 +428,7 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
     for (let i = 0; i <= n; i++) {
       const p = { x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n };
       for (const node of editor.doc.nodes) {
-        if (dist(node, p) <= node.r + pad / 2) this.erasing.add(node.id);
+        if (insideNode(node, p, pad / 2)) this.erasing.add(node.id);
       }
       for (const e of editor.doc.edges) {
         if (this.erasing.has(e.id)) continue;
@@ -470,7 +479,7 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
     else if (this.host.picking()) cursor = this.hover ? 'pointer' : 'grab';
     else if (this.hover?.kind === 'badge' || this.hover?.kind === 'loop') cursor = 'pointer';
     else if (editor.tool === 'pen') cursor = 'crosshair';
-    else if (editor.tool === 'hand') cursor = 'grab';
+    else if (editor.tool === 'select') cursor = this.hover?.kind === 'node' ? 'move' : this.hover?.kind === 'edge' ? 'grab' : 'default';
     else if (editor.tool === 'eraser') cursor = 'cell';
     this.host.setCursor(cursor);
   }

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Canvas from './canvas/Canvas.svelte';
+  import ChartPanel from './ui/ChartPanel.svelte';
+  import GalleryPanel from './ui/GalleryPanel.svelte';
+  import { gallery } from './ui/gallery.svelte';
+  import HelpPanel from './ui/HelpPanel.svelte';
+  import { help } from './ui/help.svelte';
   import { editor } from './model/editor.svelte';
-  import { EXAMPLES } from './model/examples';
   import { decodeDoc, loadLocal, saveLocal } from './model/persist';
   import { sim } from './sim/session.svelte';
   import { THEMES, themeCssVars } from './theme';
@@ -63,15 +67,18 @@
       .catch(() => toasts.show('Ce lien de partage est abîmé : impossible de l’ouvrir.'));
   });
 
-  function loadFirstExample() {
-    editor.load(EXAMPLES[0].build());
-    canvas.fit();
-  }
-
   const isTyping = (e: KeyboardEvent) =>
     e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
 
   function onkeydown(e: KeyboardEvent) {
+    // Une fenêtre ouverte (aide, bibliothèque) prend la main : Échap la ferme, les autres raccourcis attendent.
+    if (help.open || gallery.open) {
+      if (e.key === 'Escape') {
+        help.close();
+        gallery.close();
+      }
+      return;
+    }
     if (isTyping(e)) return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
@@ -88,12 +95,20 @@
       } else if (e.key === 'End') {
         presenter.go(presenter.count - 1);
       } else if (e.key === 'Escape') {
-        presenter.stop();
+        // D'abord l'inspecteur d'une boucle ouverte pendant le récit, puis le récit lui-même.
+        if (editor.selection) editor.selection = null;
+        else presenter.stop();
       }
       return;
     }
     if (editor.mode === 'sim') {
+      // Comme un lecteur vidéo : Espace lecture/pause, > et < (ou + et −) pour la vitesse.
       if (e.key === 'Escape') sim.stop();
+      else if (e.key === ' ') {
+        e.preventDefault();
+        if (!e.repeat) sim.toggle();
+      } else if (e.key === '>' || e.key === '+') sim.changeSpeed(1);
+      else if (e.key === '<' || e.key === '-') sim.changeSpeed(-1);
       return;
     }
     if (mod && key === 'z') {
@@ -105,11 +120,12 @@
       editor.redo();
     } else if (mod) {
       return;
-    } else if (key === 'c') {
+    } else if (key === 'v' || key === 'm') {
+      // Raccourcis à la Figma (V, P, E) ; les anciens (M, C, G) marchent toujours.
+      editor.tool = 'select';
+    } else if (key === 'p' || key === 'c') {
       editor.tool = 'pen';
-    } else if (key === 'm') {
-      editor.tool = 'hand';
-    } else if (key === 'g') {
+    } else if (key === 'e' || key === 'g') {
       editor.tool = 'eraser';
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
@@ -130,10 +146,12 @@
     <div class="welcome card">
       <h2>Une page blanche</h2>
       <p>Avec le <b>crayon</b>, dessine un <b>cercle</b> pour créer un élément, puis trace un <b>trait</b> d’un élément à un autre pour les relier.</p>
-      <button class="btn primary" onclick={loadFirstExample}>Voir un exemple</button>
+      <button class="btn primary" onclick={() => gallery.show()}>Voir les exemples</button>
     </div>
   {/if}
 
+  <!-- L'inspecteur sert aussi en présentation : un récit peut inviter à toucher une étiquette de boucle. -->
+  <Inspector />
   {#if editor.mode === 'present'}
     <PresentBar />
   {:else}
@@ -141,10 +159,14 @@
     {#if storyUi.open && editor.mode === 'edit'}
       <StoryPanel />
     {/if}
-    <Inspector />
+    {#if editor.mode === 'sim' && prefs.showChart}
+      <ChartPanel />
+    {/if}
     <ZoomControls {zoom} onzoomby={(f) => canvas.zoomBy(f)} onfit={() => canvas.fit()} />
     <Toolbar />
   {/if}
+  <GalleryPanel onloaded={() => canvas.fit()} />
+  <HelpPanel />
   <Toasts />
 </main>
 
@@ -155,7 +177,13 @@
     overflow: hidden;
   }
 
+  /* Pendant qu'on dessine dessous, la carte s'efface : on voit son tracé. */
+  :global(body.gesture) .welcome {
+    opacity: 0.12;
+  }
+
   .welcome {
+    transition: opacity 0.15s;
     position: absolute;
     top: 50%;
     left: 50%;

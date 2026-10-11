@@ -1,13 +1,19 @@
 import type { Selection } from '../model/editor.svelte';
-import type { Doc, SysEdge, SysNode } from '../model/types';
-import { HISTORY_LEN, type LoopySim } from '../sim/loopy';
+import { formatDuration } from '../model/time';
+import type { Doc, SysEdge, SysNode, TimeUnit } from '../model/types';
+import type { CausalSim } from '../sim/causal';
+import type { PacketTracker } from '../sim/packets';
 import type { Theme } from '../theme';
 import type { Camera } from './camera';
 import {
   BADGE_RADIUS,
+  beadTurn,
   edgeGeom,
+  flipGlow,
   LOOP_RADIUS,
   nodeById,
+  nodeShape,
+  type NodeShape,
   quadPoint,
   quadTangent,
   type EdgeGeom,
@@ -25,6 +31,8 @@ export interface Overlay {
   hover: Hit;
   /** Nœud visé par un tracé en cours (crayon) : futur bout du lien. */
   linkTarget: string | null;
+  /** Dernier tracé du crayon, qui s'estompe après le relâchement (opacité dans [0, 1]). */
+  ghost: { points: Pt[]; alpha: number } | null;
   /** Tracé en cours, en coordonnées monde. */
   trail: { points: Pt[]; kind: 'pen' | 'eraser' } | null;
   /** Éléments touchés par la gomme, effacés au relâchement. */
@@ -41,7 +49,11 @@ export interface Overlay {
   hidden: Set<string> | null;
   /** Éléments en train d'apparaître : opacité dans [0, 1]. */
   fade: Map<string, number> | null;
-  sim: LoopySim | null;
+  sim: CausalSim | null;
+  /** Avancement des perles animées sur chaque lien (simulation). */
+  phases: Map<string, number> | null;
+  /** Perles par paquets des liens qui mènent à une variable (simulation). */
+  packets: PacketTracker | null;
 }
 
 export interface View {
@@ -55,7 +67,10 @@ export interface View {
 
 /** Opacité des éléments hors de la boucle mise en évidence. */
 const DIMMED = 0.22;
-const WIDTHS: Record<number, number> = { 0.5: 2.5, 1: 4, 2: 6.5 };
+/** Épaisseur d'un lien selon sa force. */
+const edgeWidth = (weight: number) => 1.5 + 2.5 * weight ** 0.75;
+/** Perles visibles en même temps sur un lien. */
+const BEADS = 3;
 
 export function render(view: View, doc: Doc, o: Overlay) {
   const { ctx, width, height, dpr, camera } = view;
@@ -81,20 +96,52 @@ export function render(view: View, doc: Doc, o: Overlay) {
     const selected = (o.selection?.kind === 'edge' && o.selection.id === e.id) || loopEdges.has(e.id);
     const hovered = o.hover?.id === e.id && (o.hover.kind === 'edge' || o.hover.kind === 'badge');
     ctx.globalAlpha = alpha(e.id);
-    drawEdge(view, geoms.get(e.id)!, e, selected, hovered, o.hover?.kind === 'badge' && o.hover.id === e.id);
+    drawEdge(view, geoms.get(e.id)!, e, doc.timeUnit, selected, hovered, o.hover?.kind === 'badge' && o.hover.id === e.id);
   }
   ctx.globalAlpha = 1;
 
-  // Impulsions en vol
+  const imprints: { g: EdgeGeom; alpha: number; value: number; age: number }[] = [];
+  // Ce qui circule sur les liens : des perles dont la taille suit l'écart transmis.
+  // Sur un lien −, elles se retournent en passant la pastille : on voit le « − » inverser le sens.
   if (o.sim) {
-    for (const s of o.sim.signals) {
-      const g = geoms.get(s.edge.id);
-      const from = byId.get(s.edge.from);
-      if (!g || !from || s.t < 0 || isHidden(s.edge.id)) continue;
-      ctx.globalAlpha = alpha(s.edge.id);
-      drawSignal(view, g, s.t, s.delta, from);
+    for (const e of doc.edges) {
+      if (isHidden(e.id) || isHidden(e.from) || isHidden(e.to)) continue;
+      const g = geoms.get(e.id)!;
+      if (g.t1 <= g.t0) continue;
+      // Vers une accumulation : un débit, des perles en continu. Vers une variable : des paquets,
+      // seulement quand la cause change (voir sim/packets.ts).
+      const intoStock = byId.get(e.to)!.causal.kind === 'stock';
+      const phase = o.phases?.get(e.id) ?? 0;
+      const beads = intoStock
+        ? Array.from({ length: BEADS }, (_, k) => {
+            const t = (phase + k / BEADS) % 1;
+            return { t, value: o.sim!.edgeSignal(e.id, t) };
+          })
+        : (o.packets?.get(e.id) ?? []);
+      // Persistance rétinienne : l'empreinte de la dernière perle arrivée, dessinée après les galets.
+      const imprint = intoStock ? null : o.packets?.imprint(e.id);
+      if (imprint) imprints.push({ g, alpha: alpha(e.id) * imprint.strength, value: imprint.value, age: imprint.age });
+      for (const { t, value } of beads) {
+        if (Math.abs(value) < 0.004) continue;
+        ctx.globalAlpha = alpha(e.id) * Math.min(1, Math.abs(value) / 0.04);
+        // Lien − : la perle rougeoie en passant la pastille, là où elle se retourne.
+        const glow = e.polarity < 0 ? flipGlow(g, t) : 0;
+        drawBead(view, g, t, value, beadTurn(g, e.polarity, t), glow, byId.get(e.from)!);
+      }
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Impact le plus récent reçu par chaque variable : son chevron ▲ ou ▼ s'allume.
+  const impacts = new Map<string, number>();
+  if (o.packets) {
+    const latest = new Map<string, number>();
+    for (const e of doc.edges) {
+      const imprint = o.packets.imprint(e.id);
+      if (!imprint || isHidden(e.id) || imprint.age >= (latest.get(e.to) ?? Infinity)) continue;
+      latest.set(e.to, imprint.age);
+      impacts.set(e.to, Math.sign(imprint.value) * imprint.strength);
+    }
   }
 
   // Nœuds
@@ -109,9 +156,17 @@ export function render(view: View, doc: Doc, o: Overlay) {
       bounce: hit ? bounce(hit.age) * (hit.event ? 2.2 : 1) : 0,
       pulse: o.sim ? (o.pulseHover?.id === n.id ? o.pulseHover.delta : 0) : null,
       tipped: o.sim?.tipped.has(n.id) ?? false,
+      impact: impacts.get(n.id) ?? 0,
     });
     const history = o.sim?.history.get(n.id);
-    if (history) drawHistory(view, n, history);
+    if (history) drawHistory(view, n, history, o.sim!, doc.horizon);
+  }
+  ctx.globalAlpha = 1;
+
+  // Empreintes d'impact, par-dessus les galets et leurs petites courbes : on doit pouvoir les lire.
+  for (const im of imprints) {
+    ctx.globalAlpha = im.alpha;
+    drawImprint(view, im.g, im.value, im.age);
   }
   ctx.globalAlpha = 1;
 
@@ -127,6 +182,7 @@ export function render(view: View, doc: Doc, o: Overlay) {
     ctx.globalAlpha = 1;
   }
 
+  if (o.ghost) drawTrail(view, o.ghost.points, 'pen', o.ghost.alpha);
   if (o.trail) drawTrail(view, o.trail.points, o.trail.kind);
 }
 
@@ -179,12 +235,12 @@ function subCurve(ctx: CanvasRenderingContext2D, g: EdgeGeom, t0: number, t1: nu
   ctx.quadraticCurveTo(cx, cy, end.x, end.y);
 }
 
-function drawEdge(view: View, g: EdgeGeom, e: SysEdge, selected: boolean, hovered: boolean, badgeHovered: boolean) {
+function drawEdge(view: View, g: EdgeGeom, e: SysEdge, unit: TimeUnit, selected: boolean, hovered: boolean, badgeHovered: boolean) {
   const { ctx, theme } = view;
   if (g.t1 <= g.t0) return; // nœuds superposés
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  const width = WIDTHS[e.weight] ?? 4;
+  const width = edgeWidth(e.weight);
 
   if (selected || hovered) {
     const a = ctx.globalAlpha;
@@ -221,9 +277,8 @@ function drawEdge(view: View, g: EdgeGeom, e: SysEdge, selected: boolean, hovere
   ctx.stroke();
   ctx.fill();
 
-  // Retard : deux traits en travers du lien (la notation classique des diagrammes causaux).
-  if (e.delay > 0) drawDelayMark(ctx, g, 0.72, width, theme.inkSoft);
-  if (e.delay > 1) drawDelayMark(ctx, g, 0.3, width, theme.inkSoft);
+  // Retard : deux traits en travers du lien (la notation classique des diagrammes causaux), et sa durée.
+  if (e.delay > 0) drawDelay(view, g, formatDuration(e.delay, unit), width);
 
   // Pastille + / −
   const color = e.polarity === 1 ? theme.positive : theme.negative;
@@ -240,12 +295,12 @@ function drawEdge(view: View, g: EdgeGeom, e: SysEdge, selected: boolean, hovere
   drawSign(ctx, g.mid, e.polarity, r * 0.5, color);
 }
 
-function drawDelayMark(ctx: CanvasRenderingContext2D, g: EdgeGeom, at: number, width: number, color: string) {
-  const t = g.t0 + (g.t1 - g.t0) * at;
+function drawDelay({ ctx, theme }: View, g: EdgeGeom, label: string, width: number) {
+  const t = g.t0 + (g.t1 - g.t0) * 0.72;
   const p = quadPoint(g.p0, g.c, g.p1, t);
   const d = quadTangent(g.p0, g.c, g.p1, t);
   const half = 8 + width;
-  ctx.strokeStyle = color;
+  ctx.strokeStyle = theme.inkSoft;
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -256,6 +311,25 @@ function drawDelayMark(ctx: CanvasRenderingContext2D, g: EdgeGeom, at: number, w
     ctx.lineTo(cx + d.y * half, cy - d.x * half);
   }
   ctx.stroke();
+
+  // La durée, à l'extérieur de la courbe (côté bosse, vers le point de contrôle) : l'intérieur d'une
+  // boucle est réservé à son étiquette R / B. Au-dessus si le lien est droit.
+  const nx = -d.y;
+  const ny = d.x;
+  const toward = nx * (g.c.x - p.x) + ny * (g.c.y - p.y);
+  const side = Math.abs(toward) > 1 ? Math.sign(toward) : ny > 0 ? -1 : 1;
+  ctx.font = `800 13px ${FONT}`;
+  const offset = half + 4 + (Math.abs(nx) * ctx.measureText(label).width) / 2 + Math.abs(ny) * 7;
+  const lx = p.x + nx * side * offset;
+  const ly = p.y + ny * side * offset;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = theme.paper;
+  ctx.lineWidth = 4;
+  ctx.strokeText(label, lx, ly);
+  ctx.fillStyle = theme.inkSoft;
+  ctx.fillText(label, lx, ly);
 }
 
 function approxLength(g: EdgeGeom): number {
@@ -291,19 +365,31 @@ interface NodeState {
   /** null hors simulation ; sinon moitié survolée (1 : ▲, −1 : ▼, 0 : aucune). */
   pulse: number | null;
   tipped: boolean;
+  /** Impact récent d'une perle (variable seulement) : signe = sens, valeur absolue = éclat dans [0, 1]. */
+  impact: number;
+}
+
+/** Trace le contour d'un nœud (cercle ou boîte arrondie), agrandi de `grow`. */
+function nodePath(ctx: CanvasRenderingContext2D, n: SysNode, shape: NodeShape, grow = 0) {
+  const { hw, hh, corner } = shape;
+  ctx.beginPath();
+  if (hw === hh && corner === hw) ctx.arc(n.x, n.y, hw + grow, 0, Math.PI * 2);
+  else ctx.roundRect(n.x - hw - grow, n.y - hh - grow, 2 * (hw + grow), 2 * (hh + grow), Math.max(0, corner + grow));
 }
 
 function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
   const { ctx, theme } = view;
   const sw = theme.swatches[n.color];
+  // Variable : un galet rond. Accumulation : une boîte, comme les stocks d'Insight Maker.
+  const shape = nodeShape(n, 1 + s.bounce);
+  const { hw, hh } = shape;
   const r = n.r * (1 + s.bounce);
 
   if (s.selected || s.hovered) {
     ctx.fillStyle = theme.selection;
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * (s.selected ? 0.4 : 0.2);
-    ctx.beginPath();
-    ctx.arc(n.x, n.y, r + 8, 0, Math.PI * 2);
+    nodePath(ctx, n, shape, 8);
     ctx.fill();
     ctx.globalAlpha = a;
   }
@@ -311,57 +397,65 @@ function drawNode(view: View, n: SysNode, level: number, s: NodeState) {
   // Galet : ombre portée, remplissage pastel
   setShadow(view, 16, 5);
   ctx.fillStyle = sw.fill;
-  ctx.beginPath();
-  ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+  nodePath(ctx, n, shape);
   ctx.fill();
   clearShadow(ctx);
 
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+  nodePath(ctx, n, shape);
   ctx.clip();
   // Niveau : le galet se remplit par le bas
   if (level > 0) {
     ctx.fillStyle = sw.level;
-    const top = n.y + r - 2 * r * level;
-    ctx.fillRect(n.x - r, top, 2 * r, 2 * r * level + 1);
+    const top = n.y + hh - 2 * hh * level;
+    ctx.fillRect(n.x - hw, top, 2 * hw, 2 * hh * level + 1);
   }
   // Seuil : une graduation en pointillés, comme sur un verre doseur
   const c = n.causal;
   if (c.thresholdMode !== 'none') {
-    const y = n.y + r - 2 * r * c.threshold;
+    const y = n.y + hh - 2 * hh * c.threshold;
     ctx.strokeStyle = c.thresholdMode === 'tip' ? theme.negative : theme.swatches.ochre.stroke;
     ctx.lineWidth = 2.5;
     ctx.setLineDash([6, 5]);
     ctx.beginPath();
-    ctx.moveTo(n.x - r, y);
-    ctx.lineTo(n.x + r, y);
+    ctx.moveTo(n.x - hw, y);
+    ctx.lineTo(n.x + hw, y);
     ctx.stroke();
     ctx.setLineDash([]);
   }
   ctx.restore();
 
   // Reflet en haut à gauche
-  const grad = ctx.createRadialGradient(n.x - r * 0.38, n.y - r * 0.45, r * 0.05, n.x - r * 0.3, n.y - r * 0.35, r * 0.95);
+  const grad = ctx.createRadialGradient(n.x - hw * 0.38, n.y - hh * 0.45, r * 0.05, n.x - hw * 0.3, n.y - hh * 0.35, r * 0.95);
   grad.addColorStop(0, theme.highlight);
   grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
   ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+  nodePath(ctx, n, shape);
   ctx.fill();
 
   ctx.strokeStyle = s.tipped ? theme.negative : sw.stroke;
   ctx.lineWidth = s.tipped ? 5 : 3.5;
   ctx.stroke();
 
-  // Boutons ▲ ▼ en simulation : moitié haute / moitié basse du galet
-  if (s.pulse !== null) {
-    drawChevron(ctx, n.x, n.y - r * 0.62, r * 0.2, -1, sw.stroke, s.pulse === 1 ? 1 : 0.45);
-    drawChevron(ctx, n.x, n.y + r * 0.62, r * 0.2, 1, sw.stroke, s.pulse === -1 ? 1 : 0.45);
+  // Accumulation : en plus de la forme de boîte, un double contour, comme le rebord d'un réservoir.
+  if (n.causal.kind === 'stock') {
+    ctx.lineWidth = 2;
+    nodePath(ctx, n, shape, -Math.min(7, r * 0.2));
+    ctx.stroke();
   }
 
-  if (n.label) drawLabel(ctx, n, r, sw.fill, theme.ink);
-  if (s.tipped) drawLock(view, n.x + r * 0.72, n.y - r * 0.72);
+  // Boutons ▲ ▼ en simulation : moitié haute / moitié basse du galet. Le chevron s'allume quand
+  // une perle vient de pousser la variable dans ce sens.
+  if (s.pulse !== null) {
+    const up = Math.max(s.pulse === 1 ? 1 : 0.45, s.impact > 0 ? s.impact : 0);
+    const down = Math.max(s.pulse === -1 ? 1 : 0.45, s.impact < 0 ? -s.impact : 0);
+    const size = Math.min(r, hh) * 0.2;
+    drawChevron(ctx, n.x, n.y - hh * 0.62, size * (1 + 0.5 * Math.max(0, s.impact)), -1, s.impact > 0.3 ? theme.ink : sw.stroke, up);
+    drawChevron(ctx, n.x, n.y + hh * 0.62, size * (1 + 0.5 * Math.max(0, -s.impact)), 1, s.impact < -0.3 ? theme.ink : sw.stroke, down);
+  }
+
+  if (n.label) drawLabel(ctx, n, r, hw, sw.fill, theme.ink);
+  if (s.tipped) drawLock(view, n.x + hw * 0.72, n.y - hh * 0.72);
 }
 
 /** Petit cadenas : l'élément a basculé, c'est irréversible. */
@@ -401,10 +495,10 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, size: 
   ctx.globalAlpha = a;
 }
 
-function drawLabel(ctx: CanvasRenderingContext2D, n: SysNode, r: number, halo: string, ink: string) {
+function drawLabel(ctx: CanvasRenderingContext2D, n: SysNode, r: number, hw: number, halo: string, ink: string) {
   let size = Math.max(13, Math.min(24, r * 0.36));
   ctx.font = `700 ${size}px ${FONT}`;
-  const maxWidth = r * 1.75;
+  const maxWidth = hw * 1.75;
   const width = ctx.measureText(n.label).width;
   if (width > maxWidth) {
     size = Math.max(10, (size * maxWidth) / width);
@@ -420,14 +514,18 @@ function drawLabel(ctx: CanvasRenderingContext2D, n: SysNode, r: number, halo: s
   ctx.fillText(n.label, n.x, n.y);
 }
 
-/** Petite courbe des dernières secondes, sous le galet. */
-function drawHistory(view: View, n: SysNode, values: number[]) {
+/**
+ * Petite courbe sous le galet, sur la fenêtre de la durée de simulation : elle se dessine de gauche
+ * à droite, puis défile une fois la durée dépassée (comme le panneau des courbes).
+ */
+function drawHistory(view: View, n: SysNode, values: number[], sim: CausalSim, span: number) {
   const { ctx, theme } = view;
   const sw = theme.swatches[n.color];
-  const w = Math.max(70, n.r * 1.5);
+  const { hw, hh } = nodeShape(n);
+  const w = Math.max(70, hw * 1.5);
   const h = 24;
   const x0 = n.x - w / 2;
-  const y0 = n.y + n.r + 12;
+  const y0 = n.y + hh + 12;
   const pad = 3;
   const yOf = (v: number) => y0 + h - pad - v * (h - 2 * pad);
 
@@ -449,13 +547,13 @@ function drawHistory(view: View, n: SysNode, values: number[]) {
   ctx.setLineDash([]);
 
   if (values.length > 1) {
-    const dx = (w - 8) / (HISTORY_LEN - 1);
-    const start = x0 + w - 4 - (values.length - 1) * dx;
+    const start = Math.max(0, sim.time - span);
+    const xOf = (i: number) => x0 + 4 + ((sim.historyStart + i * sim.historyDt - start) / span) * (w - 8);
     ctx.strokeStyle = sw.stroke;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    values.forEach((v, i) => (i === 0 ? ctx.moveTo(start, yOf(v)) : ctx.lineTo(start + i * dx, yOf(v))));
+    values.forEach((v, i) => (i === 0 ? ctx.moveTo(Math.max(x0 + 4, xOf(i)), yOf(v)) : ctx.lineTo(xOf(i), yOf(v))));
     ctx.stroke();
   }
 }
@@ -481,6 +579,17 @@ function drawLoopLabel(view: View, l: LoopLabel, focused: boolean) {
   ctx.arc(l.x, l.y, R, 0, Math.PI * 2);
   ctx.fill();
   clearShadow(ctx);
+
+  // Boucle sans accumulation ni retard : un contour en pointillés signale qu'elle n'a pas de rythme propre.
+  if (l.loop.instant) {
+    ctx.strokeStyle = theme.negative;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3.5]);
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, R + 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // Flèche circulaire dans le sens de parcours de la boucle
   const ar = R - 5;
@@ -513,31 +622,84 @@ function drawLoopLabel(view: View, l: LoopLabel, focused: boolean) {
   ctx.fillText(l.loop.kind, l.x, l.y + 1);
 }
 
-function drawSignal(view: View, g: EdgeGeom, t: number, delta: number, from: SysNode) {
+/**
+ * Empreinte d'une perle arrivée sur une variable : un gros chevron ▲ ou ▼ dans une pastille, juste
+ * avant la pointe de la flèche, qui « tape » à l'arrivée puis s'efface (persistance rétinienne).
+ */
+function drawImprint(view: View, g: EdgeGeom, value: number, age: number) {
+  const { ctx, theme } = view;
+  if (g.t1 <= g.t0) return;
+  const back = Math.min(0.45, 34 / Math.max(1, approxLength(g)));
+  const t = g.t1 - (g.t1 - g.t0) * back;
+  const p = quadPoint(g.p0, g.c, g.p1, t);
+  const pop = 1 + 0.35 * Math.max(0, 1 - age / 0.25);
+  const r = 13 * pop;
+  setShadow(view, 6, 1.5);
+  ctx.fillStyle = theme.card;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+  clearShadow(ctx);
+  ctx.strokeStyle = theme.ink;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  drawChevron(ctx, p.x, p.y, r * 0.48, value > 0 ? -1 : 1, theme.ink, 1);
+}
+
+/** Halo rouge autour d'une perle : un anneau qui s'étend et s'intensifie avec `glow` (dans [0, 1]). */
+function drawGlow({ ctx, theme }: View, c: Pt, inner: number, glow: number) {
+  const outer = inner + 8 + 22 * glow;
+  const gradient = ctx.createRadialGradient(c.x, c.y, inner, c.x, c.y, outer);
+  gradient.addColorStop(0, withAlpha(theme.negative, glow));
+  gradient.addColorStop(0.45, withAlpha(theme.negative, 0.5 * glow));
+  gradient.addColorStop(1, withAlpha(theme.negative, 0));
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, outer, 0, Math.PI * 2);
+  ctx.arc(c.x, c.y, inner, 0, Math.PI * 2, true);
+  ctx.fill();
+}
+
+/** Couleur #rrggbb avec une opacité. */
+function withAlpha(hex: string, a: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  return `rgba(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}, ${a})`;
+}
+
+/**
+ * Une perle sur un lien : ▲ si elle pousse la cible vers le haut, ▼ vers le bas.
+ * Sa taille suit l'écart transporté (0,2 = un appui sur ▲ : taille normale).
+ * `turn` (dans [−1, 1]) retourne le chevron : sur un lien −, il vaut −1 avant la pastille.
+ * `glow` (dans [0, 1]) l'entoure d'un halo rouge et rougit son contour, au passage de la pastille −.
+ */
+function drawBead(view: View, g: EdgeGeom, t: number, value: number, turn: number, glow: number, from: SysNode) {
   const { ctx, theme } = view;
   const p = quadPoint(g.p0, g.c, g.p1, g.t0 + (g.t1 - g.t0) * t);
   const sw = theme.swatches[from.color];
-  const grow = Math.min(1, t * 6);
-  const r = 10 * grow * Math.min(1.4, Math.max(0.55, Math.sqrt(Math.abs(delta))));
+  // Apparaît au départ, s'efface à l'arrivée : le défilement boucle sans à-coup.
+  const grow = Math.min(1, t * 6, (1 - t) * 6);
+  const r = 10 * grow * Math.min(1.4, Math.max(0.45, Math.sqrt(Math.abs(value) / 0.2)));
+  if (glow > 0.01) drawGlow(view, p, r, glow);
   setShadow(view, 6, 2);
   ctx.fillStyle = sw.level;
   ctx.beginPath();
   ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
   ctx.fill();
   clearShadow(ctx);
-  ctx.strokeStyle = sw.stroke;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = glow > 0.3 ? theme.negative : sw.stroke;
+  ctx.lineWidth = 2 + 1.5 * glow;
   ctx.stroke();
-  drawChevron(ctx, p.x, p.y, r * 0.45, delta > 0 ? -1 : 1, theme.ink, 0.85);
+  drawChevron(ctx, p.x, p.y, r * 0.45, (value > 0 ? -1 : 1) * turn, theme.ink, 0.85);
 }
 
-function drawTrail({ ctx, camera, theme }: View, points: Pt[], kind: 'pen' | 'eraser') {
+/** Traînée du crayon (ou de la gomme) : on voit le chemin suivi tant que le bouton est appuyé. */
+function drawTrail({ ctx, camera, theme }: View, points: Pt[], kind: 'pen' | 'eraser', fade = 1) {
   if (points.length < 2) return;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = kind === 'pen' ? theme.ink : theme.selection;
-  ctx.globalAlpha = kind === 'pen' ? 0.55 : 0.3;
-  ctx.lineWidth = (kind === 'pen' ? 3 : 18) / camera.zoom;
+  ctx.globalAlpha = (kind === 'pen' ? 0.75 : 0.3) * fade;
+  ctx.lineWidth = (kind === 'pen' ? 3.5 : 18) / camera.zoom;
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);

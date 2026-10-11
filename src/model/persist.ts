@@ -1,9 +1,14 @@
 import { COLOR_KEYS, type ColorKey } from '../theme';
 import {
+  DEFAULT_HORIZON,
+  MAX_DURATION,
+  MIN_DURATION,
   MAX_RADIUS,
+  MAX_WEIGHT,
   MIN_RADIUS,
+  MIN_WEIGHT,
   NODE_RADIUS,
-  WEIGHTS,
+  TIME_UNITS,
   type CausalProps,
   type Doc,
   type SysEdge,
@@ -11,22 +16,38 @@ import {
   type Story,
   type StoryStep,
   type SysNode,
-  type Weight,
 } from './types';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const oneOf = <T>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
+/** Durée : 0 (aucune), ou entre MIN_DURATION et MAX_DURATION. */
+const duration = (v: unknown) => {
+  const d = Math.round(clamp(num(v, 0), 0, MAX_DURATION) * 100) / 100;
+  return d > 0 ? Math.max(MIN_DURATION, d) : 0;
+};
+
+/**
+ * Version 1 (moteur à impulsions façon Loopy) : retards et retours à l'équilibre étaient des crans
+ * (0, 1, 2) sans unité. On les traduit en durées, dans l'unité par défaut (l'année).
+ */
+const LEGACY_DELAY = [0, 2, 5];
+const LEGACY_RELAX = [0, 5, 2];
 
 /** `legacyInit` : avant la phase 2, le niveau de départ était directement sur le nœud. */
-function parseCausal(raw: unknown, legacyInit: unknown): CausalProps {
+function parseCausal(raw: unknown, legacyInit: unknown, legacy: boolean): CausalProps {
   const c = isObj(raw) ? raw : {};
+  let thresholdMode = oneOf(c.thresholdMode, ['none', 'tip', 'release'] as const, 'none');
+  // Un largage n'a de sens que pour une accumulation (les anciens nœuds « largage » en deviennent une).
+  const kind = legacy ? (thresholdMode === 'release' ? 'stock' : 'variable') : oneOf(c.kind, ['variable', 'stock'] as const, 'variable');
+  if (kind === 'variable' && thresholdMode === 'release') thresholdMode = 'none';
   return {
+    kind,
     init: clamp(num(c.init, num(legacyInit, 0.5)), 0, 1),
-    thresholdMode: oneOf(c.thresholdMode, ['none', 'tip', 'release'] as const, 'none'),
+    thresholdMode,
     threshold: clamp(num(c.threshold, 0.8), 0, 1),
-    relax: oneOf(c.relax, [0, 1, 2] as const, 0),
+    relax: legacy ? LEGACY_RELAX[oneOf(c.relax, [0, 1, 2] as const, 0)] : duration(c.relax),
     saturate: c.saturate === true,
   };
 }
@@ -34,12 +55,13 @@ function parseCausal(raw: unknown, legacyInit: unknown): CausalProps {
 /**
  * Valide et nettoie un document venu de l'extérieur (fichier, URL, localStorage).
  * Lance une erreur si ce n'est pas un document aledloop ; sinon répare ce qui peut l'être
- * (valeurs manquantes, couleurs inconnues, liens orphelins ou en double).
+ * (valeurs manquantes, couleurs inconnues, liens orphelins ou en double) et migre les anciennes versions.
  */
 export function parseDoc(raw: unknown): Doc {
   if (!isObj(raw) || !Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) {
     throw new Error('Ce fichier ne ressemble pas à un modèle aledloop.');
   }
+  const legacy = raw.version !== 2;
   const nodes: SysNode[] = [];
   const ids = new Set<string>();
   for (const n of raw.nodes) {
@@ -52,7 +74,7 @@ export function parseDoc(raw: unknown): Doc {
       r: clamp(num(n.r, NODE_RADIUS), MIN_RADIUS, MAX_RADIUS),
       label: typeof n.label === 'string' ? n.label.slice(0, 200) : '',
       color: COLOR_KEYS.includes(n.color as ColorKey) ? (n.color as ColorKey) : 'sand',
-      causal: parseCausal(n.causal, n.init),
+      causal: parseCausal(n.causal, n.init, legacy),
     });
   }
   const edges: SysEdge[] = [];
@@ -71,12 +93,19 @@ export function parseDoc(raw: unknown): Doc {
       from: e.from,
       to: e.to,
       polarity: e.polarity === -1 ? -1 : 1,
-      weight: oneOf<Weight>(e.weight, WEIGHTS, 1),
-      delay: oneOf(e.delay, [0, 1, 2] as const, 0),
+      weight: Number(clamp(num(e.weight, 1), MIN_WEIGHT, MAX_WEIGHT).toPrecision(2)),
+      delay: legacy ? LEGACY_DELAY[oneOf(e.delay, [0, 1, 2] as const, 0)] : duration(e.delay),
       bend: num(e.bend, 0),
     });
   }
-  return { version: 1, nodes, edges, story: parseStory(raw.story, ids, edgeIds) };
+  return {
+    version: 2,
+    timeUnit: oneOf(raw.timeUnit, TIME_UNITS, 'year'),
+    horizon: Math.round(clamp(num(raw.horizon, DEFAULT_HORIZON), 1, MAX_DURATION) * 100) / 100,
+    nodes,
+    edges,
+    story: parseStory(raw.story, ids, edgeIds),
+  };
 }
 
 /** Le récit ne garde que des références à des éléments qui existent. */
@@ -148,7 +177,7 @@ function compactDoc(doc: Doc): Doc {
   const round = (v: number) => Math.round(v);
   const round2 = (v: number) => Math.round(v * 100) / 100;
   return {
-    version: 1,
+    ...doc,
     nodes: doc.nodes.map((n) => ({
       ...n,
       x: round(n.x),
@@ -157,7 +186,6 @@ function compactDoc(doc: Doc): Doc {
       causal: { ...n.causal, init: round2(n.causal.init), threshold: round2(n.causal.threshold) },
     })),
     edges: doc.edges.map((e) => ({ ...e, bend: round(e.bend) })),
-    story: doc.story,
   };
 }
 

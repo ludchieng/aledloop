@@ -7,6 +7,7 @@
   import { sim } from '../sim/session.svelte';
   import { THEMES } from '../theme';
   import { prefs } from '../ui/prefs.svelte';
+  import { help } from '../ui/help.svelte';
   import { presenter, storyUi } from '../ui/story.svelte';
   import { Camera, type Margins } from './camera';
   import { docBounds, loopLabels, nodesBounds, type LoopLabel, type Pt } from './geometry';
@@ -66,6 +67,7 @@
     editor,
     camera,
     sim: () => sim.engine,
+    push: (id, delta) => sim.push(id, delta),
     loopLabels: () => {
       if (!prefs.showLoops) return [];
       const hidden = storyView().hidden;
@@ -146,6 +148,19 @@
     if (k >= 1) anim = null;
   }
 
+  /** Le dernier tracé du crayon s'estompe en GHOST_MS après le relâchement : on voit ce qu'on a dessiné. */
+  const GHOST_MS = 700;
+  function ghostTrail(now: number) {
+    const ghost = interaction.ghost;
+    if (!ghost) return null;
+    const k = (now - ghost.at) / GHOST_MS;
+    if (k >= 1) {
+      interaction.ghost = null;
+      return null;
+    }
+    return { points: ghost.points, alpha: (1 - k) * (1 - k) };
+  }
+
   // --- Rendu -----------------------------------------------------------------------
 
   /** Rendu à la demande : au plus une image par rafraîchissement d'écran. */
@@ -168,6 +183,7 @@
       hover: interaction.hover,
       linkTarget: interaction.linkTarget,
       trail: interaction.trail,
+      ghost: ghostTrail(now),
       erasing: interaction.erasing,
       pulseHover: interaction.pulseHover,
       loopLabels: prefs.showLoops ? loops().labels : null,
@@ -176,13 +192,15 @@
       hidden: story.hidden,
       fade,
       sim: sim.engine,
+      phases: sim.engine ? sim.phases : null,
+      packets: sim.engine ? sim.packets : null,
     });
     if (camera.zoom !== lastZoom) {
       lastZoom = camera.zoom;
       onzoom?.(camera.zoom);
     }
     // En simulation ou pendant une animation, on dessine en continu ; sinon on attend le prochain changement.
-    if (editor.simulating || anim || fade) requestRender();
+    if (editor.simulating || anim || fade || interaction.ghost) requestRender();
     else lastTime = 0;
   }
 
@@ -190,13 +208,21 @@
   function margins(): Margins {
     const side = Math.min(60, width * 0.06);
     if (editor.mode === 'present') {
-      return { top: Math.min(60, height * 0.08), bottom: Math.min(270, height * 0.38), left: side, right: side };
+      // La carte de narration grandit avec le texte de l'étape : on mesure sa vraie hauteur quand elle est là.
+      const bar = document.querySelector('.present');
+      const card = bar ? bar.getBoundingClientRect().height + 28 : Math.min(270, height * 0.38);
+      return { top: Math.min(60, height * 0.08), bottom: Math.min(card, height * 0.55), left: side, right: side };
     }
     const m = { top: Math.min(90, height * 0.12), bottom: Math.min(120, height * 0.16), left: side, right: side };
     // Le panneau du récit occupe la gauche (bureau) ou le bas (téléphone).
     if (editor.mode === 'edit' && storyUi.open) {
       if (width > 700) m.left = 370;
       else m.bottom = height * 0.48 + 90;
+    }
+    // Les courbes occupent le coin en bas à gauche (bureau) ou une bande au-dessus de la barre d'outils.
+    if (chartShown()) {
+      if (width > 1000) m.left = Math.min(560, width / 2 - 236) + 40;
+      else m.bottom = 92 + 230 + 16;
     }
     return m;
   }
@@ -227,15 +253,22 @@
     // La « capture » garantit qu'on reçoit la suite du geste même si le doigt sort du canvas.
     canvas.setPointerCapture(e.pointerId);
     anim = null; // l'utilisateur reprend la main sur la vue
+    // Pendant un geste, l'interface flottante (carte d'accueil…) s'efface pour laisser voir le tracé.
+    document.body.classList.add('gesture');
     interaction.down(e, local(e));
+  }
+
+  function endGesture() {
+    document.body.classList.remove('gesture');
   }
 
   const isTyping = (e: KeyboardEvent) =>
     e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
 
   function onkeydown(e: KeyboardEvent) {
-    // En présentation, Espace fait avancer le récit (géré par App).
-    if (e.code === 'Space' && !isTyping(e) && editor.mode !== 'present') {
+    // Espace maintenu déplace la vue en édition. En simulation, il met en pause, et en présentation il fait
+    // avancer le récit (gérés par App) ; dans l'aide, il fait défiler la page.
+    if (e.code === 'Space' && !isTyping(e) && editor.mode === 'edit' && !help.open) {
       e.preventDefault();
       if (!interaction.spaceDown) {
         interaction.spaceDown = true;
@@ -303,6 +336,16 @@
     requestRender();
   });
 
+  const chartShown = () => editor.mode === 'sim' && prefs.showChart;
+
+  // Afficher ou masquer les courbes : on recadre pour qu'elles ne cachent pas le diagramme.
+  let prevChart = chartShown();
+  $effect(() => {
+    const shown = chartShown();
+    if (shown !== prevChart) untrack(() => width && fit());
+    prevChart = shown;
+  });
+
   // Ouvrir ou fermer le récit : on recadre selon la place disponible.
   $effect(() => {
     void storyUi.open;
@@ -362,8 +405,14 @@
   bind:this={canvas}
   {onpointerdown}
   onpointermove={(e) => interaction.move(e, local(e))}
-  onpointerup={(e) => interaction.up(e, local(e))}
-  onpointercancel={(e) => interaction.cancel(e)}
+  onpointerup={(e) => {
+    endGesture();
+    interaction.up(e, local(e));
+  }}
+  onpointercancel={(e) => {
+    endGesture();
+    interaction.cancel(e);
+  }}
   onpointerleave={() => interaction.leave()}
   oncontextmenu={(e) => e.preventDefault()}
   aria-label="Canevas du diagramme"

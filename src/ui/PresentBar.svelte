@@ -39,7 +39,7 @@
     <button class="btn" aria-label="Étape précédente" title="Précédente (←)" disabled={presenter.index === 0} onclick={() => presenter.prev()}>
       <Icon name="prev" />
     </button>
-    <div class="dots">
+    <div class="dots" class:many={steps.length > 10}>
       {#each steps as s, i (s.id)}
         <button
           class="dot"
@@ -170,6 +170,25 @@
     height: 14px;
     background: var(--selection);
     box-shadow: 0 1px 3px var(--shadow);
+  }
+
+  /* Récit long : des points plus serrés, pour que la barre tienne sur une tablette. */
+  .dots.many {
+    gap: 0;
+  }
+
+  .many .dot {
+    width: 13px;
+  }
+
+  .many .dot::after {
+    width: 8px;
+    height: 8px;
+  }
+
+  .many .dot.active::after {
+    width: 12px;
+    height: 12px;
   }
 
   .next {

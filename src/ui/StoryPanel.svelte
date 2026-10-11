@@ -92,7 +92,7 @@
     </button>
   </header>
   <p class="intro">
-    Raconte ton système étape par étape : à chaque étape, un texte, des éléments mis en avant, et si tu veux une impulsion.
+    Raconte ton système étape par étape : à chaque étape, un texte, des éléments mis en avant, et si tu veux une action (augmenter ou diminuer un élément).
   </p>
 
   <label class="check">

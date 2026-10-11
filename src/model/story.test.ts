@@ -9,7 +9,8 @@ const step = (focus: string[], pulse: StoryStep['pulse'] = null): StoryStep => (
 
 function doc(steps: StoryStep[], reveal = true): Doc {
   return {
-    version: 1,
+    version: 2,
+    timeUnit: 'year', horizon: 20,
     nodes: ['a', 'b', 'c'].map((id, i) => ({ id, x: i * 100, y: 0, r: 40, label: id.toUpperCase(), color: 'sage', causal: defaultCausal() })),
     edges: [
       { id: 'ab', from: 'a', to: 'b', polarity: 1, weight: 1, delay: 0, bend: 0 },

@@ -1,30 +1,21 @@
 <script lang="ts">
   import { editor } from '../model/editor.svelte';
-  import { EXAMPLES } from '../model/examples';
   import { encodeDoc, parseDoc } from '../model/persist';
-  import { emptyDoc, type Doc } from '../model/types';
-  import { sim } from '../sim/session.svelte';
+  import { emptyDoc } from '../model/types';
+  import { gallery } from './gallery.svelte';
   import Icon from './Icon.svelte';
+  import { replaceDoc } from './load';
   import { prefs } from './prefs.svelte';
   import { toasts } from './notify.svelte';
-  import { storyUi } from './story.svelte';
+  import { help } from './help.svelte';
 
   let { onloaded }: { onloaded: () => void } = $props();
 
   let fileInput: HTMLInputElement;
-  let examplesOpen = $state(false);
-
-  /** Remplace le document en restant annulable, avec un toast « Annuler ». */
-  function replaceDoc(doc: Doc, message: string) {
-    if (editor.simulating) sim.stop();
-    editor.load(doc);
-    onloaded();
-    toasts.show(message, { label: 'Annuler', run: () => { editor.undo(); onloaded(); } });
-  }
 
   function newDoc() {
     if (editor.doc.nodes.length === 0) return;
-    replaceDoc(emptyDoc(), 'Nouveau diagramme.');
+    replaceDoc(emptyDoc(), 'Nouveau diagramme.', onloaded);
   }
 
   function save() {
@@ -42,7 +33,7 @@
     e.currentTarget.value = '';
     if (!file) return;
     try {
-      replaceDoc(parseDoc(JSON.parse(await file.text())), `« ${file.name} » ouvert.`);
+      replaceDoc(parseDoc(JSON.parse(await file.text())), `« ${file.name} » ouvert.`, onloaded);
     } catch (err) {
       toasts.show(err instanceof SyntaxError ? 'Ce fichier n’est pas du JSON valide.' : (err as Error).message);
     }
@@ -57,60 +48,36 @@
       window.prompt('Copie ce lien pour partager ton diagramme :', url);
     }
   }
-
-  function loadExample(id: string) {
-    const ex = EXAMPLES.find((x) => x.id === id);
-    examplesOpen = false;
-    if (ex) replaceDoc(ex.build(), `Exemple « ${ex.title} » chargé.`);
-  }
 </script>
 
-<svelte:window onpointerdown={(e) => examplesOpen && !(e.target as Element).closest?.('.examples') && (examplesOpen = false)} />
-
 <header class="topbar">
-  <div class="brand card">
-    <svg class="logo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
-      <circle cx="22" cy="36" r="13" fill="var(--terracotta)" stroke="var(--terracotta-stroke)" stroke-width="3.5" />
-      <circle cx="44" cy="26" r="11" fill="var(--sage)" stroke="var(--sage-stroke)" stroke-width="3.5" />
-      <path d="M28 21 Q34 11 40 14" fill="none" stroke="var(--ink-soft)" stroke-width="3.5" stroke-linecap="round" />
-      <path d="M38 41 Q32 52 25 50" fill="none" stroke="var(--ink-soft)" stroke-width="3.5" stroke-linecap="round" />
-    </svg>
-    <h1>aledloop</h1>
-  </div>
-
-  <nav class="actions card" aria-label="Fichier">
-    <div class="examples">
-      <button class="btn" aria-expanded={examplesOpen} onclick={() => (examplesOpen = !examplesOpen)} title="Diagrammes d’exemple">
-        <Icon name="book" size={19} /><span class="label">Exemples</span>
-      </button>
-      {#if examplesOpen}
-        <ul class="menu card">
-          {#each EXAMPLES as ex (ex.id)}
-            <li>
-              <button onclick={() => loadExample(ex.id)}>
-                <strong>{ex.title}</strong>
-                <span>{ex.description}</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+  <!-- À gauche, le logiciel et le projet : la bibliothèque d'exemples, puis le fichier en cours. -->
+  <nav class="main card" aria-label="Projet">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
+        <circle cx="22" cy="36" r="13" fill="var(--terracotta)" stroke="var(--terracotta-stroke)" stroke-width="3.5" />
+        <circle cx="44" cy="26" r="11" fill="var(--sage)" stroke="var(--sage-stroke)" stroke-width="3.5" />
+        <path d="M28 21 Q34 11 40 14" fill="none" stroke="var(--ink-soft)" stroke-width="3.5" stroke-linecap="round" />
+        <path d="M38 41 Q32 52 25 50" fill="none" stroke="var(--ink-soft)" stroke-width="3.5" stroke-linecap="round" />
+      </svg>
+      <h1>aledloop</h1>
     </div>
-    <button
-      class="btn"
-      class:active={storyUi.open}
-      aria-pressed={storyUi.open}
-      onclick={() => storyUi.toggle()}
-      title="Raconter le diagramme étape par étape"
-    >
-      <Icon name="story" size={19} /><span class="label">Récit</span>
+    <span class="sep"></span>
+    <button class="btn" onclick={() => gallery.show()} title="Bibliothèque d’exemples">
+      <Icon name="book" size={19} /><span class="label">Exemples</span>
     </button>
     <span class="sep"></span>
     <button class="btn" onclick={newDoc} title="Nouveau diagramme"><Icon name="file" size={19} /><span class="label">Nouveau</span></button>
     <button class="btn" onclick={() => fileInput.click()} title="Ouvrir un fichier .json"><Icon name="folder" size={19} /><span class="label">Ouvrir</span></button>
     <button class="btn" onclick={save} title="Enregistrer en .json"><Icon name="save" size={19} /><span class="label">Enregistrer</span></button>
     <button class="btn" onclick={share} title="Copier un lien de partage"><Icon name="link" size={19} /><span class="label">Partager</span></button>
-    <span class="sep"></span>
+  </nav>
+
+  <!-- À droite, l'application : l'aide et le thème. -->
+  <nav class="app card" aria-label="Application">
+    <button class="btn" onclick={() => help.show()} title="Comment ça marche : la simulation expliquée">
+      <Icon name="help" size={19} /><span class="label">Aide</span>
+    </button>
     <button
       class="btn"
       onclick={() => prefs.toggleTheme()}
@@ -141,12 +108,20 @@
     pointer-events: auto;
   }
 
+  .main,
+  .app {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 16px;
+  }
+
   .brand {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 16px 6px 10px;
-    border-radius: 16px;
+    padding: 0 8px 0 6px;
   }
 
   h1 {
@@ -157,70 +132,26 @@
     letter-spacing: -0.01em;
   }
 
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
-    border-radius: 16px;
-  }
-
-  .examples {
-    position: relative;
-  }
-
-  .menu {
-    position: absolute;
-    top: calc(100% + 10px);
-    left: 0;
-    width: min(320px, calc(100vw - 24px));
-    margin: 0;
-    padding: 6px;
-    list-style: none;
-  }
-
-  .menu button {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    width: 100%;
-    padding: 10px 12px;
-    border: none;
-    border-radius: 12px;
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .menu button:hover {
-    background: color-mix(in srgb, var(--paper-deep) 55%, transparent);
-  }
-
-  .menu span {
-    font-size: 13px;
-    color: var(--ink-soft);
-    line-height: 1.35;
-  }
-
-  @media (max-width: 860px) {
+  @media (max-width: 960px) {
     .label {
       display: none;
     }
   }
 
-  @media (max-width: 520px) {
+  @media (max-width: 620px) {
     h1 {
       display: none;
     }
     .brand {
-      padding: 6px;
+      padding: 0 4px;
     }
-    .menu {
-      position: fixed;
-      top: calc(max(12px, env(safe-area-inset-top)) + 58px);
-      left: 12px;
-      right: 12px;
-      width: auto;
+  }
+
+  /* Très petit écran : le logo laisse sa place aux boutons. */
+  @media (max-width: 430px) {
+    .brand,
+    .brand + .sep {
+      display: none;
     }
   }
 </style>

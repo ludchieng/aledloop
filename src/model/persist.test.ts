@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from './examples';
 import { decodeDoc, encodeDoc, parseDoc } from './persist';
-import { defaultCausal } from './types';
+import { DEFAULT_HORIZON, defaultCausal, MAX_DURATION, MAX_WEIGHT, MIN_DURATION, MIN_WEIGHT } from './types';
 
 describe('parseDoc', () => {
   it('refuse ce qui n’est pas un modèle', () => {
@@ -31,20 +31,57 @@ describe('parseDoc', () => {
 
   it('lit les réglages causaux et rejette les valeurs inconnues', () => {
     const doc = parseDoc({
+      version: 2,
+      timeUnit: 'day',
       nodes: [
-        { id: 'a', causal: { init: 0.2, thresholdMode: 'tip', threshold: 0.9, relax: 2, saturate: true } },
-        { id: 'b', causal: { thresholdMode: 'boum', relax: 7, saturate: 'oui' } },
+        { id: 'a', causal: { kind: 'stock', init: 0.2, thresholdMode: 'release', threshold: 0.9, relax: 2.5, saturate: true } },
+        { id: 'b', causal: { kind: 'nuage', thresholdMode: 'boum', relax: -7, saturate: 'oui' } },
+        { id: 'c', causal: { kind: 'variable', thresholdMode: 'release' } },
+      ],
+      edges: [
+        { id: 'e', from: 'a', to: 'b', weight: 1.5, delay: 2.5 },
+        { id: 'f', from: 'b', to: 'a', weight: 30, delay: -1 },
+        { id: 'g', from: 'b', to: 'c', weight: 0, delay: 99999 },
+        { id: 'h', from: 'c', to: 'a', delay: 0.04 },
+      ],
+    });
+    expect(doc.timeUnit).toBe('day');
+    expect(doc.nodes[0].causal).toEqual({ kind: 'stock', init: 0.2, thresholdMode: 'release', threshold: 0.9, relax: 2.5, saturate: true });
+    expect(doc.nodes[1].causal).toEqual(defaultCausal());
+    // Un largage n'a de sens que pour une accumulation.
+    expect(doc.nodes[2].causal.thresholdMode).toBe('none');
+    expect(doc.edges.map((e) => [e.weight, e.delay])).toEqual([
+      [1.5, 2.5],
+      [MAX_WEIGHT, 0],
+      [MIN_WEIGHT, MAX_DURATION],
+      [1, MIN_DURATION], // une durée non nulle ne descend pas sous le minimum
+    ]);
+    expect(parseDoc({ version: 2, timeUnit: 'siècle', nodes: [], edges: [] })).toMatchObject({ timeUnit: 'year', horizon: DEFAULT_HORIZON });
+    expect(parseDoc({ version: 2, horizon: 45.5, nodes: [], edges: [] }).horizon).toBe(45.5);
+    expect(parseDoc({ version: 2, horizon: -3, nodes: [], edges: [] }).horizon).toBe(1);
+  });
+
+  it('migre la version 1 (moteur à impulsions) : crans de retard en durées, largage en accumulation', () => {
+    const doc = parseDoc({
+      version: 1,
+      nodes: [
+        { id: 'a', causal: { init: 0.2, thresholdMode: 'release', threshold: 0.9, relax: 1 } },
+        { id: 'b', causal: { thresholdMode: 'tip', relax: 2 } },
       ],
       edges: [
         { id: 'e', from: 'a', to: 'b', weight: 2, delay: 1 },
-        { id: 'f', from: 'b', to: 'a', weight: 3, delay: 9 },
+        { id: 'f', from: 'b', to: 'a', weight: 0.5, delay: 2 },
       ],
     });
-    expect(doc.nodes[0].causal).toEqual({ init: 0.2, thresholdMode: 'tip', threshold: 0.9, relax: 2, saturate: true });
-    expect(doc.nodes[1].causal).toEqual(defaultCausal());
+    expect(doc.version).toBe(2);
+    expect(doc.timeUnit).toBe('year');
+    expect(doc.nodes.map((n) => [n.causal.kind, n.causal.thresholdMode, n.causal.relax])).toEqual([
+      ['stock', 'release', 5],
+      ['variable', 'tip', 2],
+    ]);
     expect(doc.edges.map((e) => [e.weight, e.delay])).toEqual([
-      [2, 1],
-      [1, 0],
+      [2, 2],
+      [0.5, 5],
     ]);
   });
 
@@ -58,7 +95,7 @@ describe('parseDoc', () => {
 
 describe('partage par URL', () => {
   it('encode puis décode à l’identique (coordonnées arrondies)', async () => {
-    const doc = EXAMPLES[1].build();
+    const doc = EXAMPLES.find((e) => e.id === 'albedo')!.build();
     doc.nodes[0].x = 12.6;
     const code = await encodeDoc(doc);
     expect(code).toMatch(/^[\w-]+$/);
@@ -66,5 +103,7 @@ describe('partage par URL', () => {
     expect(back.nodes[0].x).toBe(13);
     expect(back.nodes[0].label).toBe('CO₂');
     expect(back.edges).toEqual(doc.edges);
+    expect(back.timeUnit).toBe(doc.timeUnit);
+    expect(back.nodes.map((n) => n.causal)).toEqual(doc.nodes.map((n) => n.causal));
   });
 });

@@ -6,18 +6,26 @@ export type ThresholdMode =
   | 'none'
   /** Bascule irréversible : l'élément se bloque au maximum, les baisses n'ont plus d'effet. */
   | 'tip'
-  /** Accumulation puis largage : l'élément retient les impulsions, puis relâche tout d'un coup. */
+  /** Largage (accumulations seulement) : se remplit sans rien transmettre, puis se vide d'un coup au seuil. */
   | 'release';
 
-/** Réglages propres au mode causal (façon Loopy). Ignorés par le futur moteur stocks-flux. */
+/**
+ * Nature d'un élément, la distinction centrale de la dynamique des systèmes :
+ * - variable : suit ses causes immédiatement (naissances, chauffage, peur…) ;
+ * - stock (« accumulation ») : se remplit ou se vide au fil du temps (population, température, argent…).
+ */
+export type NodeKind = 'variable' | 'stock';
+
+/** Réglages propres au mode causal. Ignorés par le futur moteur stocks-flux. */
 export interface CausalProps {
-  /** Niveau de départ, dans [0, 1]. */
+  kind: NodeKind;
+  /** Niveau de départ, dans [0, 1]. C'est un équilibre : sans intervention, rien ne bouge. */
   init: number;
   thresholdMode: ThresholdMode;
   /** Seuil, dans [0, 1]. */
   threshold: number;
-  /** Retour à l'équilibre (vers `init`) : 0 non, 1 lent, 2 rapide. */
-  relax: 0 | 1 | 2;
+  /** Retour à l'équilibre : constante de temps, en unités de temps du document (0 : jamais). */
+  relax: number;
   /** Saturation : plus l'élément est plein (ou vide), moins il réagit et moins il transmet. */
   saturate: boolean;
 }
@@ -34,18 +42,26 @@ export interface SysNode {
 
 export type Polarity = 1 | -1;
 
-export const WEIGHTS = [0.5, 1, 2] as const;
-export type Weight = (typeof WEIGHTS)[number];
+/** Bornes de la force d'un lien. */
+export const MIN_WEIGHT = 0.01;
+export const MAX_WEIGHT = 3;
+/** Bornes d'un retard ou d'un retour à l'équilibre non nul, en unités de temps. */
+export const MIN_DURATION = 0.1;
+export const MAX_DURATION = 1000;
+
+/** Unités de temps proposées. Elles ne changent pas les calculs, seulement le sens des nombres. */
+export const TIME_UNITS = ['second', 'minute', 'hour', 'day', 'week', 'month', 'year'] as const;
+export type TimeUnit = (typeof TIME_UNITS)[number];
 
 export interface SysEdge {
   id: string;
   from: string;
   to: string;
   polarity: Polarity;
-  /** Force du lien : multiplie l'impulsion transmise. */
-  weight: Weight;
-  /** Retard : 0 normal, 1 lent, 2 très lent. */
-  delay: 0 | 1 | 2;
+  /** Force du lien, dans [MIN_WEIGHT, MAX_WEIGHT] : multiplie l'écart transmis. */
+  weight: number;
+  /** Retard, en unités de temps du document (0 : effet immédiat). */
+  delay: number;
   /** Décalage perpendiculaire du milieu de la courbe (unités monde). */
   bend: number;
 }
@@ -57,7 +73,7 @@ export interface StoryStep {
   text: string;
   /** Éléments mis en avant (nœuds et liens) ; le reste s'estompe. Vide : tout est visible. */
   focus: string[];
-  /** Action jouée à l'arrivée sur l'étape : une impulsion sur un nœud. */
+  /** Action jouée à l'arrivée sur l'étape : augmenter ou diminuer un nœud, comme ▲ ▼. */
   pulse: { node: string; delta: 1 | -1 } | null;
 }
 
@@ -68,7 +84,11 @@ export interface Story {
 }
 
 export interface Doc {
-  version: 1;
+  version: 2;
+  /** Unité de temps commune aux retards, aux retours à l'équilibre et à l'horloge de la simulation. */
+  timeUnit: TimeUnit;
+  /** Durée de simulation, en unités de temps : l'axe des courbes, et la fin du calcul « d'un coup ». */
+  horizon: number;
   nodes: SysNode[];
   edges: SysEdge[];
   story: Story;
@@ -78,9 +98,10 @@ export const NODE_RADIUS = 48;
 export const MIN_RADIUS = 24;
 export const MAX_RADIUS = 140;
 export const DEFAULT_BEND = 28;
+export const DEFAULT_HORIZON = 20;
 
 export function defaultCausal(): CausalProps {
-  return { init: 0.5, thresholdMode: 'none', threshold: 0.8, relax: 0, saturate: false };
+  return { kind: 'variable', init: 0.5, thresholdMode: 'none', threshold: 0.8, relax: 0, saturate: false };
 }
 
 export function emptyStory(): Story {
@@ -88,7 +109,7 @@ export function emptyStory(): Story {
 }
 
 export function emptyDoc(): Doc {
-  return { version: 1, nodes: [], edges: [], story: emptyStory() };
+  return { version: 2, timeUnit: 'year', horizon: DEFAULT_HORIZON, nodes: [], edges: [], story: emptyStory() };
 }
 
 let counter = 0;
