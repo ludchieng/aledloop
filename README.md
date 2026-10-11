@@ -61,3 +61,7 @@ The site is deployed to GitHub Pages by [a workflow](.github/workflows/deploy.ym
 ## Credits
 
 Inspired by [LOOPY](https://github.com/ncase/loopy) by Nicky Case and [Insight Maker](https://insightmaker.com/) by Scott Fortmann-Roe. The long-term horizon is World3, from Donella Meadows, Dennis Meadows, Jørgen Randers and William Behrens’s *The Limits to Growth*.
+
+## License
+
+[MIT](LICENSE) © 2026 Ludwig Chieng
