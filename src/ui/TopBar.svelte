@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
   import { parseDoc } from '../model/persist';
   import Icon from './Icon.svelte';
   import { prefs } from './prefs.svelte';
   import { toasts } from './notify.svelte';
   import { router } from './router.svelte';
+
+  const t = $derived(i18n.t);
 
   let fileInput: HTMLInputElement;
 
@@ -24,9 +27,9 @@
     if (!file) return;
     try {
       await router.openFile(parseDoc(JSON.parse(await file.text())));
-      toasts.show(`« ${file.name} » ouvert.`);
+      toasts.show(t.topbar.opened(file.name));
     } catch (err) {
-      toasts.show(err instanceof SyntaxError ? 'Ce fichier n’est pas du JSON valide.' : (err as Error).message);
+      toasts.show(err instanceof SyntaxError ? t.topbar.invalidJson : t.topbar.notAModel);
     }
   }
 
@@ -34,16 +37,16 @@
     const url = await router.shareUrl();
     try {
       await navigator.clipboard.writeText(url);
-      toasts.show(url.includes('#m=') ? 'Lien copié : il contient tout le diagramme.' : 'Lien vers cet exemple copié.');
+      toasts.show(url.includes('#m=') ? t.topbar.linkCopied : t.topbar.exampleLinkCopied);
     } catch {
-      window.prompt('Copie ce lien pour partager ton diagramme :', url);
+      window.prompt(t.topbar.copyPrompt, url);
     }
   }
 </script>
 
 <header class="topbar">
   <!-- À gauche, le logiciel et le projet : la bibliothèque d'exemples, puis le fichier en cours. -->
-  <nav class="main card" aria-label="Projet">
+  <nav class="main card" aria-label={t.topbar.project}>
     <div class="brand">
       <svg class="logo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
         <circle cx="22" cy="36" r="13" fill="var(--terracotta)" stroke="var(--terracotta-stroke)" stroke-width="3.5" />
@@ -54,26 +57,30 @@
       <h1>aledloop</h1>
     </div>
     <span class="sep"></span>
-    <button class="btn" onclick={() => router.showGallery()} title="Bibliothèque d’exemples">
-      <Icon name="book" size={19} /><span class="label">Exemples</span>
+    <button class="btn" onclick={() => router.showGallery()} title={t.topbar.examplesTitle}>
+      <Icon name="book" size={19} /><span class="label">{t.topbar.examples}</span>
     </button>
     <span class="sep"></span>
-    <button class="btn" onclick={() => router.newDoc()} title="Nouveau diagramme"><Icon name="file" size={19} /><span class="label">Nouveau</span></button>
-    <button class="btn" onclick={() => fileInput.click()} title="Ouvrir un fichier .json"><Icon name="folder" size={19} /><span class="label">Ouvrir</span></button>
-    <button class="btn" onclick={save} title="Enregistrer en .json"><Icon name="save" size={19} /><span class="label">Enregistrer</span></button>
-    <button class="btn" onclick={share} title="Copier un lien de partage"><Icon name="link" size={19} /><span class="label">Partager</span></button>
+    <button class="btn" onclick={() => router.newDoc()} title={t.topbar.newTitle}><Icon name="file" size={19} /><span class="label">{t.topbar.new}</span></button>
+    <button class="btn" onclick={() => fileInput.click()} title={t.topbar.openTitle}><Icon name="folder" size={19} /><span class="label">{t.topbar.open}</span></button>
+    <button class="btn" onclick={save} title={t.topbar.saveTitle}><Icon name="save" size={19} /><span class="label">{t.topbar.save}</span></button>
+    <button class="btn" onclick={share} title={t.topbar.shareTitle}><Icon name="link" size={19} /><span class="label">{t.topbar.share}</span></button>
   </nav>
 
-  <!-- À droite, l'application : l'aide et le thème. -->
-  <nav class="app card" aria-label="Application">
-    <button class="btn" onclick={() => router.showHelp()} title="Comment ça marche : la simulation expliquée">
-      <Icon name="help" size={19} /><span class="label">Aide</span>
+  <!-- À droite, l'application : l'aide, la langue et le thème. -->
+  <nav class="app card" aria-label={t.topbar.application}>
+    <button class="btn" onclick={() => router.showHelp()} title={t.topbar.helpTitle}>
+      <Icon name="help" size={19} /><span class="label">{t.topbar.help}</span>
+    </button>
+    <!-- Le bouton montre l'autre langue, écrite dans cette langue : « English » sur l'interface en français. -->
+    <button class="btn lang" onclick={() => i18n.toggle()} title={t.topbar.otherLangTitle} lang={i18n.lang === 'fr' ? 'en' : 'fr'}>
+      <Icon name="globe" size={19} /><span class="label">{t.topbar.otherLang}</span><span class="short">{t.topbar.otherLangShort}</span>
     </button>
     <button
       class="btn"
       onclick={() => prefs.toggleTheme()}
-      title={prefs.theme === 'papier' ? 'Thème veillée (sombre)' : 'Thème papier (clair)'}
-      aria-label="Changer de thème"
+      title={prefs.theme === 'papier' ? t.topbar.darkTheme : t.topbar.lightTheme}
+      aria-label={t.topbar.themeAria}
     >
       <Icon name={prefs.theme === 'papier' ? 'moon' : 'sun'} size={19} />
     </button>
@@ -123,9 +130,19 @@
     letter-spacing: -0.01em;
   }
 
+  /* Sur écran étroit, la langue garde un code court (« EN ») : une icône seule ne dirait pas laquelle. */
+  .short {
+    display: none;
+    font-weight: 800;
+    font-size: 13px;
+  }
+
   @media (max-width: 960px) {
     .label {
       display: none;
+    }
+    .short {
+      display: inline;
     }
   }
 

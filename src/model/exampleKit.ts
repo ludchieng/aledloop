@@ -1,6 +1,7 @@
 /**
  * Outils pour écrire les exemples de la bibliothèque : niveaux, thèmes, et `doc()`, une écriture
- * compacte d'un diagramme et de son récit. Les exemples eux-mêmes sont dans examples.ts et examplesMore.ts.
+ * compacte d'un diagramme et de son récit. Les exemples eux-mêmes sont dans examples.ts et examplesMore.ts,
+ * leur traduction anglaise dans examples.en.ts ; les noms des niveaux et des thèmes dans src/i18n/.
  */
 import type { ColorKey } from '../theme';
 import { defaultCausal, type CausalProps, type Doc, type Polarity, type SysEdge, type TimeUnit } from './types';
@@ -9,27 +10,14 @@ import { defaultCausal, type CausalProps, type Doc, type Polarity, type SysEdge,
 export type Level = 1 | 2 | 3;
 export type Topic = 'quotidien' | 'nature' | 'climat' | 'sante' | 'societe' | 'economie' | 'geopolitique' | 'industrie' | 'technique' | 'histoire';
 
-export const LEVELS: Record<Level, { title: string; subtitle: string }> = {
-  1: { title: 'Premiers pas', subtitle: 'Une seule boucle, pour voir la rétroaction à l’œuvre.' },
-  2: { title: 'Plusieurs boucles', subtitle: 'Des boucles qui se combinent, des retards, des seuils.' },
-  3: {
-    title: 'Systèmes complexes',
-    subtitle: 'Économie, énergie, géopolitique : des mécanismes illustratifs, pas des prévisions.',
-  },
-};
-
-export const TOPICS: Record<Topic, string> = {
-  quotidien: 'Au quotidien',
-  nature: 'Nature',
-  climat: 'Climat',
-  sante: 'Santé',
-  societe: 'Société',
-  economie: 'Économie',
-  geopolitique: 'Énergie et géopolitique',
-  industrie: 'Industrie et ressources',
-  technique: 'Ingénierie',
-  histoire: 'Histoire',
-};
+/** Les textes d'un exemple dans une autre langue : étiquettes par identifiant de nœud, étapes du récit dans l'ordre. */
+export interface ExampleText {
+  title: string;
+  description: string;
+  shows: string;
+  labels: Record<string, string>;
+  story: string[];
+}
 
 export interface Example {
   id: string;

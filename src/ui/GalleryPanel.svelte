@@ -1,11 +1,14 @@
 <script lang="ts">
   import { drawThumbnail } from '../canvas/thumbnail';
-  import { EXAMPLES, LEVELS, TOPICS, type Level, type Topic } from '../model/examples';
+  import { i18n } from '../i18n/i18n.svelte';
+  import { EXAMPLES, exampleText, type Level, type Topic } from '../model/examples';
   import type { Doc } from '../model/types';
   import { THEMES } from '../theme';
   import Icon from './Icon.svelte';
   import { prefs } from './prefs.svelte';
   import { router } from './router.svelte';
+
+  const t = $derived(i18n.t);
 
   // Construits une fois : les miniatures et le nombre d'étapes des récits en ont besoin.
   const items = EXAMPLES.map((ex) => {
@@ -30,10 +33,10 @@
     if (router.galleryOpen) closeButton?.focus({ preventScroll: true });
   });
 
-  /** Dessine la miniature, et la redessine si le thème change (lecture réactive de prefs.theme). */
+  /** Dessine la miniature, et la redessine si le thème ou la langue (des retards) change : lectures réactives. */
   function thumbnail(doc: Doc) {
     return (canvas: HTMLCanvasElement) => {
-      drawThumbnail(canvas, doc, THEMES[prefs.theme]);
+      drawThumbnail(canvas, doc, THEMES[prefs.theme], i18n.lang);
     };
   }
 </script>
@@ -41,21 +44,21 @@
 {#if router.galleryOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="backdrop" onclick={() => router.close()}></div>
-  <div class="gallery card" role="dialog" aria-modal="true" aria-label="Bibliothèque d’exemples">
+  <div class="gallery card" role="dialog" aria-modal="true" aria-label={t.gallery.title}>
     <header>
       <div class="titles">
-        <h2>Bibliothèque d’exemples</h2>
-        <p>Choisis un système : ouvre-le pour jouer avec, ou laisse-toi raconter son histoire.</p>
+        <h2>{t.gallery.title}</h2>
+        <p>{t.gallery.intro}</p>
       </div>
-      <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => router.close()}>
+      <button bind:this={closeButton} class="btn close" aria-label={t.common.close} title={t.common.closeEsc} onclick={() => router.close()}>
         <Icon name="close" size={20} />
       </button>
     </header>
 
-    <div class="topics" role="group" aria-label="Thèmes">
-      <button class="chip" class:active={topic === 'all'} aria-pressed={topic === 'all'} onclick={() => (topic = 'all')}>Tous</button>
-      {#each topics as t (t)}
-        <button class="chip" class:active={topic === t} aria-pressed={topic === t} onclick={() => (topic = t)}>{TOPICS[t]}</button>
+    <div class="topics" role="group" aria-label={t.gallery.topics}>
+      <button class="chip" class:active={topic === 'all'} aria-pressed={topic === 'all'} onclick={() => (topic = 'all')}>{t.gallery.all}</button>
+      {#each topics as name (name)}
+        <button class="chip" class:active={topic === name} aria-pressed={topic === name} onclick={() => (topic = name)}>{t.gallery.topicNames[name]}</button>
       {/each}
     </div>
 
@@ -63,31 +66,32 @@
       {#each sections as section (section.level)}
         <section>
           <h3>
-            <span class="level" aria-label="Niveau {section.level} sur 3">
+            <span class="level" aria-label={t.gallery.level(section.level)}>
               {#each [1, 2, 3] as i (i)}<span class="pip" class:on={i <= section.level}></span>{/each}
             </span>
-            {LEVELS[section.level].title}
+            {t.gallery.levels[section.level].title}
           </h3>
-          <p class="subtitle">{LEVELS[section.level].subtitle}</p>
+          <p class="subtitle">{t.gallery.levels[section.level].subtitle}</p>
           <ul class="grid">
             {#each section.items as { ex, doc, steps } (ex.id)}
+              {@const text = exampleText(ex, i18n.lang)}
               <li class="item">
-                <button class="open" onclick={() => router.openExample(ex.id)} title="Ouvrir « {ex.title} »">
+                <button class="open" onclick={() => router.openExample(ex.id)} title={t.gallery.open(text.title)}>
                   <canvas class="thumb" {@attach thumbnail(doc)} aria-hidden="true"></canvas>
                   <span class="body">
-                    <strong>{ex.title}</strong>
-                    <span class="desc">{ex.description}</span>
+                    <strong>{text.title}</strong>
+                    <span class="desc">{text.description}</span>
                   </span>
                 </button>
                 <div class="foot">
-                  <span class="tag">{TOPICS[ex.topic]}</span>
-                  <span class="tag shows">{ex.shows}</span>
+                  <span class="tag">{t.gallery.topicNames[ex.topic]}</span>
+                  <span class="tag shows">{text.shows}</span>
                   {#if edited.has(ex.id)}
-                    <span class="tag edited" title="Tu l’as modifié : il s’ouvrira avec tes modifications">Modifié</span>
+                    <span class="tag edited" title={t.gallery.editedTitle}>{t.gallery.edited}</span>
                   {/if}
                   {#if steps > 0}
-                    <button class="btn tell" onclick={() => router.openExample(ex.id, true)} title="Présenter le récit, étape par étape">
-                      <Icon name="present" size={16} /> Raconter · {steps}
+                    <button class="btn tell" onclick={() => router.openExample(ex.id, true)} title={t.gallery.tellTitle}>
+                      <Icon name="present" size={16} /> {t.gallery.tell} · {steps}
                     </button>
                   {/if}
                 </div>

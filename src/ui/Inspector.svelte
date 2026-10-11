@@ -1,16 +1,16 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
   import { analyzeLoop, describeLoop, findLoops } from '../model/loops';
-  import { richText } from '../model/story';
-  import { formatDuration, formatEstimate, unitName } from '../model/time';
   import { MAX_RADIUS, MAX_WEIGHT, MIN_RADIUS, MIN_WEIGHT, type NodeKind, type ThresholdMode } from '../model/types';
-  import { COLOR_KEYS, COLOR_NAMES } from '../theme';
+  import { COLOR_KEYS } from '../theme';
   import Duration from './Duration.svelte';
   import { loopSection, SECTIONS } from './help';
   import { router } from './router.svelte';
   import Icon from './Icon.svelte';
   import { toasts } from './notify.svelte';
   import { layout } from './layout.svelte';
+  import Rich from './Rich.svelte';
   import Segmented from './Segmented.svelte';
   import { storyUi } from './story.svelte';
 
@@ -23,7 +23,9 @@
     return n ? { ...n, causal: { ...n.causal } } : null;
   });
 
-  const nameOf = (id: string) => editor.node(id)?.label.trim() || 'cet élément';
+  const t = $derived(i18n.t);
+
+  const nameOf = (id: string) => editor.node(id)?.label.trim() || i18n.t.inspector.thisElement;
 
   const edge = $derived.by(() => {
     void editor.rev;
@@ -39,7 +41,7 @@
     const l = findLoops(editor.doc).find((x) => x.key === sel.id);
     if (!l) return null;
     const steps = l.edges.map((id, i) => ({ name: nameOf(l.nodes[i]), polarity: editor.edge(id)?.polarity ?? 1 }));
-    return { ...l, steps, negatives: steps.filter((s) => s.polarity === -1).length, analysis: analyzeLoop(editor.doc, l) };
+    return { ...l, steps, negatives: steps.filter((s) => s.polarity === -1).length, analysis: analyzeLoop(editor.doc, l, i18n.lang) };
   });
 
   const unit = $derived.by(() => {
@@ -70,7 +72,7 @@
   });
 
   function reverse(id: string) {
-    if (!editor.reverseEdge(id)) toasts.show('Il existe déjà un lien dans l’autre sens.');
+    if (!editor.reverseEdge(id)) toasts.show(t.inspector.reverseExists);
   }
 
   /** Une variable ne peut pas « larguer » : elle n'accumule rien. */
@@ -84,43 +86,34 @@
   const weightToSlider = (w: number) => Math.round((WEIGHT_STEPS * Math.log(w / MIN_WEIGHT)) / WEIGHT_SPAN);
   const sliderToWeight = (v: number) => Number((MIN_WEIGHT * Math.exp((v / WEIGHT_STEPS) * WEIGHT_SPAN)).toPrecision(2));
 
-  const KIND_OPTIONS: { value: NodeKind; label: string }[] = [
-    { value: 'variable', label: 'Variable' },
-    { value: 'stock', label: 'Accumulation' },
-  ];
-  const KIND_HELP: Record<NodeKind, string> = {
-    variable: 'Suit ses causes **immédiatement**. Ex. : naissances, chauffage, peur, prix.',
-    stock: 'Se **remplit ou se vide au fil du temps**, au rythme de ce qui arrive par ses liens. C’est elle qui donne son rythme à une boucle. Ex. : population, température, argent, CO₂ dans l’air.',
-  };
-  const THRESHOLD_HELP: Record<ThresholdMode, string> = {
-    none: 'Le niveau monte et descend librement.',
-    tip: 'Point de bascule : une fois le seuil franchi, l’élément se bloque au maximum. Plus rien ne peut le faire redescendre.',
-    release: 'Largage : l’accumulation se remplit sans rien transmettre… puis se vide d’un coup au seuil, et transmet tout ce qu’elle avait retenu.',
-  };
+  const kindOptions = $derived<{ value: NodeKind; label: string }[]>([
+    { value: 'variable', label: t.inspector.kinds.variable },
+    { value: 'stock', label: t.inspector.kinds.stock },
+  ]);
   const thresholdOptions = (kind: NodeKind): { value: ThresholdMode; label: string }[] => [
-    { value: 'none', label: 'Aucun' },
-    { value: 'tip', label: 'Bascule' },
-    ...(kind === 'stock' ? [{ value: 'release' as const, label: 'Largage' }] : []),
+    { value: 'none', label: t.inspector.thresholdModes.none },
+    { value: 'tip', label: t.inspector.thresholdModes.tip },
+    ...(kind === 'stock' ? [{ value: 'release' as const, label: t.inspector.thresholdModes.release }] : []),
   ];
 </script>
 
 {#if visible}
-  <aside class="inspector card" class:present={editor.mode === 'present'} aria-label="Inspecteur">
-    <button class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => (editor.selection = null)}>
+  <aside class="inspector card" class:present={editor.mode === 'present'} aria-label={t.inspector.aria}>
+    <button class="btn close" aria-label={t.common.close} title={t.common.closeEsc} onclick={() => (editor.selection = null)}>
       <Icon name="close" size={18} />
     </button>
 
     {#if node}
       {@const id = node.id}
       {@const c = node.causal}
-      <h2>Élément</h2>
+      <h2>{t.inspector.node}</h2>
       <label class="field">
-        <span>Nom</span>
+        <span>{t.inspector.name}</span>
         <input
           bind:this={labelInput}
           type="text"
           value={node.label}
-          placeholder="Ex. : Lapins, Température…"
+          placeholder={t.inspector.namePlaceholder}
           maxlength="60"
           oninput={(e) => editor.updateNode(id, { label: e.currentTarget.value }, 'label:' + id)}
           onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
@@ -128,7 +121,7 @@
       </label>
 
       <div class="field">
-        <span>Couleur</span>
+        <span>{t.inspector.color}</span>
         <div class="swatches">
           {#each COLOR_KEYS as k (k)}
             <button
@@ -136,8 +129,8 @@
               class:active={node.color === k}
               style:--fill="var(--{k})"
               style:--stroke="var(--{k}-stroke)"
-              title={COLOR_NAMES[k]}
-              aria-label={COLOR_NAMES[k]}
+              title={t.colors[k]}
+              aria-label={t.colors[k]}
               aria-pressed={node.color === k}
               onclick={() => editor.updateNode(id, { color: k })}
             ></button>
@@ -146,17 +139,17 @@
       </div>
 
       <div class="field">
-        <span>Nature</span>
-        <Segmented label="Nature de l’élément" options={KIND_OPTIONS} value={c.kind} onchange={(v) => setKind(id, v, c.thresholdMode)} />
+        <span>{t.inspector.nature}</span>
+        <Segmented label={t.inspector.natureAria} options={kindOptions} value={c.kind} onchange={(v) => setKind(id, v, c.thresholdMode)} />
         <p class="help">
-          {#each richText(KIND_HELP[c.kind]) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}
-          <button class="why" onclick={() => router.showHelp(SECTIONS.nature)}>En savoir plus</button>
+          <Rich text={t.inspector.kindHelp[c.kind]} />
+          <button class="why" onclick={() => router.showHelp(SECTIONS.nature)}>{t.inspector.learnMore}</button>
         </p>
       </div>
 
       <div class="row">
         <label class="field">
-          <span>Taille</span>
+          <span>{t.inspector.size}</span>
           <input
             type="range"
             min={MIN_RADIUS}
@@ -165,8 +158,8 @@
             oninput={(e) => editor.updateNode(id, { r: +e.currentTarget.value }, 'size:' + id)}
           />
         </label>
-        <label class="field" title="Niveau d’équilibre : sans intervention, l’élément y reste.">
-          <span>Départ <em>{Math.round(c.init * 100)} %</em></span>
+        <label class="field" title={t.inspector.startTitle}>
+          <span>{t.inspector.start} <em>{t.common.percent(Math.round(c.init * 100))}</em></span>
           <input
             type="range"
             min="0"
@@ -178,20 +171,20 @@
       </div>
 
       <details class="more" open={c.thresholdMode !== 'none' || c.relax > 0 || c.saturate}>
-        <summary>Comportement <Icon name="chevron" size={16} /></summary>
+        <summary>{t.inspector.behavior} <Icon name="chevron" size={16} /></summary>
 
         <div class="field">
-          <span>Seuil</span>
+          <span>{t.inspector.threshold}</span>
           <Segmented
-            label="Seuil"
+            label={t.inspector.threshold}
             options={thresholdOptions(c.kind)}
             value={c.thresholdMode}
             onchange={(v) => editor.updateCausal(id, { thresholdMode: v })}
           />
-          <p class="help">{THRESHOLD_HELP[c.thresholdMode]}</p>
+          <p class="help">{t.inspector.thresholdHelp[c.thresholdMode]}</p>
           {#if c.thresholdMode !== 'none'}
             <label class="field">
-              <span>Niveau du seuil <em>{Math.round(c.threshold * 100)} %</em></span>
+              <span>{t.inspector.thresholdLevel} <em>{t.common.percent(Math.round(c.threshold * 100))}</em></span>
               <input
                 type="range"
                 min="10"
@@ -204,49 +197,46 @@
         </div>
 
         <div class="field">
-          <span>Retour à l’équilibre</span>
+          <span>{t.inspector.relax}</span>
           <Duration
-            label="Retour à l’équilibre"
+            label={t.inspector.relax}
             value={c.relax}
             {unit}
-            zero="Jamais"
+            zero={t.inspector.never}
             onchange={(v) => editor.updateCausal(id, { relax: v })}
             onunit={(u) => editor.setTimeUnit(u)}
           />
           <p class="help">
             {#if c.relax > 0}
-              {c.kind === 'stock'
-                ? `Revient d’elle-même vers son niveau de départ, les deux tiers du chemin en ${formatDuration(c.relax, unit)} : une petite boucle équilibrante cachée (une fuite).`
-                : `Un appui sur ▲ ▼ s’estompe : les deux tiers en ${formatDuration(c.relax, unit)}.`}
+              {c.kind === 'stock' ? t.inspector.relaxStock(i18n.duration(c.relax, unit)) : t.inspector.relaxVariable(i18n.duration(c.relax, unit))}
             {:else}
-              {c.kind === 'stock' ? 'Sans cause qui la pousse, l’accumulation garde son niveau.' : 'Un appui sur ▲ ▼ dure tant qu’on ne le compense pas.'}
+              {c.kind === 'stock' ? t.inspector.keepsStock : t.inspector.keepsVariable}
             {/if}
           </p>
         </div>
 
         <label class="check">
           <input type="checkbox" checked={c.saturate} onchange={(e) => editor.updateCausal(id, { saturate: e.currentTarget.checked })} />
-          <span><b>Saturation</b> : plus l’élément est plein (ou vide), moins il réagit et moins il transmet. Une boucle renforçante dessine alors une courbe en S.</span>
+          <span><Rich text={t.inspector.saturate} /></span>
         </label>
       </details>
 
       <div class="actions">
         <button class="btn danger" onclick={() => editor.remove([id])}>
-          <Icon name="trash" size={18} /> Supprimer
+          <Icon name="trash" size={18} /> {t.inspector.delete}
         </button>
       </div>
     {:else if edge}
       {@const id = edge.id}
-      {@const points = formatEstimate(10 * edge.weight)}
-      <h2>Lien</h2>
+      <h2>{t.inspector.edge}</h2>
       <p class="sentence">
-        Quand <b>{edge.fromName}</b> augmente, <b>{edge.toName}</b>
+        <Rich text={t.inspector.when(edge.fromName, edge.toName)} />
       </p>
       <Segmented
-        label="Effet du lien"
+        label={t.inspector.edgeEffect}
         options={[
-          { value: 1, label: 'augmente' },
-          { value: -1, label: 'diminue' },
+          { value: 1, label: t.inspector.increases },
+          { value: -1, label: t.inspector.decreases },
         ]}
         value={edge.polarity}
         onchange={() => editor.togglePolarity(id)}
@@ -258,7 +248,7 @@
       </Segmented>
 
       <label class="field">
-        <span>Force <em>×{formatEstimate(edge.weight)}</em></span>
+        <span>{t.inspector.strength} <em>×{i18n.estimate(edge.weight)}</em></span>
         <input
           type="range"
           min="0"
@@ -268,49 +258,52 @@
         />
       </label>
       <p class="help">
-        Si <b>{edge.fromName}</b> est 10 points au-dessus de son départ,
-        {#if edge.toStock}
-          <b>{edge.toName}</b> {edge.polarity === 1 ? 'monte' : 'baisse'} de {points} points par {unitName(unit, 1)}{edge.delay > 0 ? ' (une fois le retard passé)' : ''}.
-        {:else}
-          <b>{edge.toName}</b> est {points} points {edge.polarity === 1 ? 'au-dessus' : 'en dessous'} du sien{edge.delay > 0 ? ', une fois le retard passé' : ''}.
-        {/if}
+        <Rich
+          text={t.inspector.strengthHelp({
+            from: edge.fromName,
+            to: edge.toName,
+            points: i18n.estimate(10 * edge.weight),
+            toStock: edge.toStock,
+            up: edge.polarity === 1,
+            perUnit: i18n.unit(unit, 1),
+            delayed: edge.delay > 0,
+          })}
+        />
       </p>
 
       <div class="field">
-        <span>Retard</span>
+        <span>{t.inspector.delay}</span>
         <Duration
-          label="Retard du lien"
+          label={t.inspector.delayAria}
           value={edge.delay}
           {unit}
-          zero="Aucun"
+          zero={t.inspector.noDelay}
           onchange={(v) => editor.updateEdge(id, { delay: v })}
           onunit={(u) => editor.setTimeUnit(u)}
         />
         <p class="help">
-          {edge.delay > 0
-            ? `L’effet arrive progressivement, en moyenne au bout de ${formatDuration(edge.delay, unit)}.`
-            : 'L’effet est immédiat.'}
-          Dans une boucle équilibrante, un retard long par rapport à son temps de réaction la fait osciller : touche l’étiquette de la boucle pour savoir à partir de quand.
-          <button class="why" onclick={() => router.showHelp(SECTIONS.delay)}>Comment marche un retard ?</button>
+          {edge.delay > 0 ? t.inspector.delayed(i18n.duration(edge.delay, unit)) : t.inspector.immediate}
+          {t.inspector.delayLoops}
+          <button class="why" onclick={() => router.showHelp(SECTIONS.delay)}>{t.inspector.delayWhy}</button>
         </p>
       </div>
 
       <div class="actions">
-        <button class="btn" onclick={() => reverse(id)}><Icon name="swap" size={18} /> Inverser le sens</button>
+        <button class="btn" onclick={() => reverse(id)}><Icon name="swap" size={18} /> {t.inspector.reverse}</button>
         <button class="btn" disabled={edge.bend === 0} onclick={() => editor.updateEdge(id, { bend: 0 })}>
-          <Icon name="straight" size={18} /> Redresser
+          <Icon name="straight" size={18} /> {t.inspector.straighten}
         </button>
         <button class="btn danger" onclick={() => editor.remove([], [id])}>
-          <Icon name="trash" size={18} /> Supprimer
+          <Icon name="trash" size={18} /> {t.inspector.delete}
         </button>
       </div>
     {:else if loop}
       {@const a = loop.analysis}
       <h2 class="loop-title" class:r={loop.kind === 'R'}>
         <span class="loop-badge">{loop.kind}</span>
-        Boucle {loop.kind === 'R' ? 'renforçante' : 'équilibrante'}
+        {t.inspector.loopTitle[loop.kind]}
       </h2>
-      <p class="sentence">{describeLoop(loop)}</p>
+      <p class="sentence">{describeLoop(loop, i18n.lang)}</p>
       <ol class="path">
         {#each loop.steps as step, i (i)}
           <li>
@@ -320,23 +313,19 @@
         {/each}
         <li><b>{loop.steps[0].name}</b></li>
       </ol>
-      <p class="help">
-        {loop.negatives === 0 ? 'Aucun lien' : loop.negatives === 1 ? 'Un lien' : `${loop.negatives} liens`} « − » sur le chemin :
-        un nombre {loop.negatives % 2 === 0 ? 'pair' : 'impair'}, donc
-        {loop.kind === 'R' ? 'les effets s’additionnent.' : 'l’effet finit par se retourner contre lui-même.'}
-      </p>
+      <p class="help">{t.inspector.negatives(loop.negatives, loop.kind === 'R')}</p>
 
       <section class="analysis" class:warn={a.verdict === 'instant' || a.verdict === 'unstable'}>
-        <h3>Son rythme</h3>
-        <p>{#each richText(a.text) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}</p>
+        <h3>{t.inspector.rhythm}</h3>
+        <p><Rich text={a.text} /></p>
         <dl class="facts">
-          <div><dt>Accumulations</dt><dd>{a.stocks}</dd></div>
-          <div><dt>Retard total</dt><dd>{a.delay > 0 ? formatDuration(a.delay, unit) : 'aucun'}</dd></div>
-          <div><dt>Forces</dt><dd>×{formatEstimate(a.gain)}</dd></div>
+          <div><dt>{t.inspector.stocks}</dt><dd>{a.stocks}</dd></div>
+          <div><dt>{t.inspector.totalDelay}</dt><dd>{a.delay > 0 ? i18n.duration(a.delay, unit) : t.inspector.none}</dd></div>
+          <div><dt>{t.inspector.strengths}</dt><dd>×{i18n.estimate(a.gain)}</dd></div>
         </dl>
         <p class="help">
-          Estimation pour la boucle seule : saturations, seuils et autres boucles peuvent changer la donne.
-          <button class="why" onclick={() => router.showHelp(loopSection(a))}>Pourquoi ?</button>
+          {t.inspector.estimate}
+          <button class="why" onclick={() => router.showHelp(loopSection(a))}>{t.inspector.why}</button>
         </p>
       </section>
     {/if}
@@ -483,7 +472,7 @@
     color: var(--ink-soft);
   }
 
-  .help b {
+  .help :global(b) {
     color: var(--ink);
   }
 
@@ -576,7 +565,7 @@
     cursor: pointer;
   }
 
-  .check b {
+  .check :global(b) {
     color: var(--ink);
   }
 

@@ -1,5 +1,6 @@
 import { findLoops } from '../model/loops';
 import type { Doc } from '../model/types';
+import type { Lang } from '../i18n/lang';
 import type { Theme } from '../theme';
 import { Camera } from './camera';
 import { docBounds, loopLabels } from './geometry';
@@ -9,7 +10,7 @@ import { render } from './render';
  * Miniature d'un diagramme, pour la bibliothèque d'exemples : le vrai rendu, sans les étiquettes
  * (illisibles à cette taille), cadré dans le canvas.
  */
-export function drawThumbnail(canvas: HTMLCanvasElement, doc: Doc, theme: Theme) {
+export function drawThumbnail(canvas: HTMLCanvasElement, doc: Doc, theme: Theme, lang: Lang) {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const ctx = canvas.getContext('2d');
@@ -20,7 +21,7 @@ export function drawThumbnail(canvas: HTMLCanvasElement, doc: Doc, theme: Theme)
   const bare: Doc = { ...doc, nodes: doc.nodes.map((n) => ({ ...n, label: '' })) };
   const camera = new Camera();
   camera.fit(docBounds(bare), width, height, { top: 12, right: 12, bottom: 12, left: 12 });
-  render({ ctx, width, height, dpr, camera, theme }, bare, {
+  render({ ctx, width, height, dpr, camera, theme, lang }, bare, {
     selection: null,
     hover: null,
     linkTarget: null,

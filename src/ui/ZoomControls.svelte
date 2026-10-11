@@ -1,16 +1,18 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte';
   import Icon from './Icon.svelte';
   import { prefs } from './prefs.svelte';
 
   let { zoom, onzoomby, onfit }: { zoom: number; onzoomby: (factor: number) => void; onfit: () => void } = $props();
+  const t = $derived(i18n.t);
 </script>
 
 <div class="zoom card">
-  <button class="btn step" aria-label="Dézoomer" title="Dézoomer (Ctrl + molette)" onclick={() => onzoomby(1 / 1.25)}>
+  <button class="btn step" aria-label={t.zoom.zoomOut} title={t.zoom.zoomOutTitle} onclick={() => onzoomby(1 / 1.25)}>
     <Icon name="minus" size={18} />
   </button>
-  <span class="value">{Math.round(zoom * 100)} %</span>
-  <button class="btn step" aria-label="Zoomer" title="Zoomer (Ctrl + molette)" onclick={() => onzoomby(1.25)}>
+  <span class="value">{t.common.percent(Math.round(zoom * 100))}</span>
+  <button class="btn step" aria-label={t.zoom.zoomIn} title={t.zoom.zoomInTitle} onclick={() => onzoomby(1.25)}>
     <Icon name="plus" size={18} />
   </button>
   <span class="sep"></span>
@@ -18,13 +20,13 @@
     class="btn"
     class:active={prefs.showLoops}
     aria-pressed={prefs.showLoops}
-    aria-label="Afficher les boucles"
-    title={prefs.showLoops ? 'Masquer les boucles R / B' : 'Afficher les boucles R / B'}
+    aria-label={t.zoom.loops}
+    title={prefs.showLoops ? t.zoom.hideLoops : t.zoom.showLoops}
     onclick={() => prefs.toggleLoops()}
   >
     <Icon name="loop" size={19} />
   </button>
-  <button class="btn" aria-label="Recentrer" title="Recentrer sur le diagramme" onclick={onfit}>
+  <button class="btn" aria-label={t.zoom.fit} title={t.zoom.fitTitle} onclick={onfit}>
     <Icon name="focus" size={19} />
   </button>
 </div>

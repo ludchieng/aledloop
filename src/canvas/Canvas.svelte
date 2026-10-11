@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
   import { findLoops, type Loop } from '../model/loops';
   import { framingNodes, hiddenAt, stepFocus } from '../model/story';
@@ -79,7 +80,7 @@
     setCursor: (cursor) => {
       if (canvas) canvas.style.cursor = cursor;
     },
-    hint: (message) => onhint?.(message),
+    penHint: () => onhint?.(i18n.t.canvas.penHint),
   });
 
   // --- Apparition en fondu des éléments révélés par le récit ---------------------
@@ -178,7 +179,7 @@
     const story = storyView();
     const loop = loopFocus();
     const fade = fades(story.hidden, now);
-    render({ ctx, width, height, dpr, camera, theme: THEMES[prefs.theme] }, editor.doc, {
+    render({ ctx, width, height, dpr, camera, theme: THEMES[prefs.theme], lang: i18n.lang }, editor.doc, {
       selection: editor.selection,
       hover: interaction.hover,
       linkTarget: interaction.linkTarget,
@@ -329,6 +330,7 @@
     void editor.selection;
     void editor.mode;
     void prefs.theme;
+    void i18n.lang;
     void prefs.showLoops;
     void storyUi.open;
     void storyUi.active;
@@ -416,7 +418,7 @@
   }}
   onpointerleave={() => interaction.leave()}
   oncontextmenu={(e) => e.preventDefault()}
-  aria-label="Canevas du diagramme"
+  aria-label={i18n.t.canvas.aria}
 ></canvas>
 
 <style>

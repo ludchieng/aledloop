@@ -100,6 +100,16 @@ describe('analyzeLoop', () => {
     expect(text).toContain('5,3 minutes'); // (8/3) / G
   });
 
+  it('s’écrit aussi en anglais, avec les nombres à l’anglaise', () => {
+    const doc = thermostat(0.5, 2);
+    doc.timeUnit = 'minute';
+    const { text, verdict } = analyzeLoop(doc, findLoops(doc)[0], 'en');
+    expect(verdict).toBe(analyze(doc).verdict);
+    expect(text).toContain('about 2 minutes');
+    expect(text).toContain('0.63 minutes');
+    expect(text).toContain('5.3 minutes');
+  });
+
   it('boucles renforçantes : temps de doublement, ou extinction si les liens sont faibles', () => {
     const r = graph('ab', [['a', 'b'], ['b', 'a']]);
     r.nodes[0].causal.kind = 'stock';

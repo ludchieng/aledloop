@@ -1,5 +1,6 @@
+import { i18n } from '../i18n/i18n.svelte';
 import { editor } from '../model/editor.svelte';
-import { EXAMPLES } from '../model/examples';
+import { buildExample, EXAMPLES, exampleText } from '../model/examples';
 import { decodeDoc, draftKeys, encodeDoc, loadDraft, loadLocal, removeDraft, saveDraft, saveLocal } from '../model/persist';
 import { emptyDoc, type Doc } from '../model/types';
 import { sim } from '../sim/session.svelte';
@@ -112,7 +113,7 @@ class Router {
     this.backToEdit();
     editor.load(emptyDoc());
     this.fit();
-    toasts.show('Nouveau diagramme.', { label: 'Annuler', run: () => this.undoLoad() });
+    toasts.show(i18n.t.router.newDoc, { label: i18n.t.router.undo, run: () => this.undoLoad() });
   }
 
   /** Présente le récit à partir de l'étape `at`. Renvoie false s'il n'y a pas d'étape. */
@@ -147,6 +148,23 @@ class Router {
   /** Les exemples que l'on a modifiés (pour les signaler dans la bibliothèque). */
   editedExamples(): Set<string> {
     return new Set(draftKeys().flatMap((k) => (k.startsWith('ex:') ? [k.slice(3)] : [])));
+  }
+
+  /**
+   * La langue a changé : un exemple intact la suit (étiquettes, récit), traduit sur place pour qu'une
+   * simulation ou une présentation en cours continue. Un diagramme modifié, lui, reste tel qu'on l'a écrit.
+   */
+  relocalize() {
+    this.updateTitle();
+    const ref = this.doc;
+    const example = ref?.kind === 'example' ? exampleById(ref.id) : undefined;
+    if (!example || this.modified()) return;
+    const fresh = buildExample(example, i18n.lang);
+    const labels = new Map(fresh.nodes.map((n) => [n.id, n.label]));
+    for (const n of editor.doc.nodes) n.label = labels.get(n.id) ?? n.label;
+    editor.doc.story.steps.forEach((step, i) => (step.text = fresh.story.steps[i]?.text ?? step.text));
+    this.original = JSON.stringify(editor.doc);
+    editor.changed();
   }
 
   /** Enregistre le diagramme affiché : mon diagramme tel quel ; un exemple ou un partage, seulement s'il a été modifié. */
@@ -199,7 +217,7 @@ class Router {
     if (!this.view.story) {
       if (presenting) presenter.stop();
     } else if (!presenting && !presenter.start(0)) {
-      toasts.show('Ce diagramme n’a pas de récit à présenter.');
+      toasts.show(i18n.t.router.noStory);
       this.view = { ...this.view, story: false };
       if (this.route.page === 'doc') this.navigate(this.view, 'replace');
     }
@@ -214,9 +232,9 @@ class Router {
     } else if (ref.kind === 'example') {
       const example = exampleById(ref.id);
       if (example) {
-        this.show(ref, example.build());
+        this.show(ref, buildExample(example, i18n.lang));
       } else {
-        toasts.show('Cet exemple n’existe pas (ou plus) : voici la bibliothèque.');
+        toasts.show(i18n.t.router.unknownExample);
         this.view = HOME;
         this.navigate({ page: 'gallery' }, 'replace');
       }
@@ -228,7 +246,7 @@ class Router {
         () => {
           if (token !== this.token) return;
           this.loading = false;
-          toasts.show('Ce lien de partage est abîmé : impossible de l’ouvrir.');
+          toasts.show(i18n.t.router.brokenLink);
           this.navigate(HOME, 'replace');
         },
       );
@@ -250,14 +268,15 @@ class Router {
     this.fit();
     this.syncStory();
 
+    const t = i18n.t.router;
     if (draft) {
-      toasts.show('Tu retrouves tes modifications.', { label: 'Revenir à l’original', run: () => this.revert() }, 8000);
+      toasts.show(t.draftRestored, { label: t.backToOriginal, run: () => this.revert() }, 8000);
     } else if (landing && ref.kind === 'shared' && !this.view.story) {
       // Arrivée par un lien partagé.
       if (editor.doc.story.steps.length > 0) {
-        toasts.show('Diagramme partagé ouvert : il contient un récit.', { label: 'Le présenter', run: () => this.present() }, 10000);
+        toasts.show(t.sharedWithStory, { label: t.presentIt, run: () => this.present() }, 10000);
       } else {
-        toasts.show('Diagramme partagé ouvert.', { label: 'Revenir au mien', run: () => this.navigate(HOME) }, 8000);
+        toasts.show(t.sharedOpened, { label: t.backToMine, run: () => this.navigate(HOME) }, 8000);
       }
     }
   }
@@ -268,7 +287,7 @@ class Router {
     this.backToEdit();
     editor.load(JSON.parse(this.original));
     this.fit();
-    toasts.show('Retour à l’original.', { label: 'Annuler', run: () => this.undoLoad() });
+    toasts.show(i18n.t.router.reverted, { label: i18n.t.router.undo, run: () => this.undoLoad() });
   }
 
   private undoLoad() {
@@ -286,13 +305,15 @@ class Router {
   /** Le titre de l'onglet, que l'on voit aussi dans l'historique (appui long sur le bouton précédent). */
   private updateTitle() {
     const route = this.route;
+    const t = i18n.t.router;
     let name: string | null;
-    if (route.page === 'gallery') name = 'Exemples';
-    else if (route.page === 'help') name = 'Aide';
+    if (route.page === 'gallery') name = t.titleGallery;
+    else if (route.page === 'help') name = t.titleHelp;
     else {
       const doc = route.doc;
-      name = doc.kind === 'example' ? (exampleById(doc.id)?.title ?? null) : doc.kind === 'shared' ? 'Diagramme partagé' : null;
-      if (route.story) name = `Récit${name ? ' · ' + name : ''}`;
+      const example = doc.kind === 'example' ? exampleById(doc.id) : undefined;
+      name = example ? exampleText(example, i18n.lang).title : doc.kind === 'shared' ? t.titleShared : null;
+      if (route.story) name = `${t.titleStory}${name ? ' · ' + name : ''}`;
     }
     document.title = name ? `${name} · aledloop` : 'aledloop';
   }

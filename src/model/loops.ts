@@ -1,3 +1,4 @@
+import type { Lang } from '../i18n/lang';
 import { formatDuration, formatEstimate } from './time';
 import type { Doc } from './types';
 
@@ -96,10 +97,8 @@ export function findLoops(doc: Doc, max = MAX_LOOPS): Loop[] {
 }
 
 /** Phrase d'explication, pour l'inspecteur. */
-export function describeLoop(loop: Loop): string {
-  return loop.kind === 'R'
-    ? 'Un changement s’amplifie en faisant le tour : une hausse entraîne encore plus de hausse, une baisse encore plus de baisse. Cercle vertueux… ou vicieux.'
-    : 'Un changement se corrige en faisant le tour : le système résiste, revient vers un équilibre, ou oscille autour.';
+export function describeLoop(loop: Loop, lang: Lang = 'fr'): string {
+  return loop.kind === 'R' ? TEXT[lang].reinforcing : TEXT[lang].balancing;
 }
 
 /**
@@ -140,79 +139,128 @@ export interface LoopAnalysis {
 }
 
 /**
+ * Les phrases de l'analyse, dans chaque langue. Durées et nombres arrivent déjà écrits : `tau` temps de
+ * réaction, `D` retard total, `osc` et `runaway` les retards au-delà desquels la boucle oscille, puis s'emballe.
+ */
+interface LoopTexts {
+  reinforcing: string;
+  balancing: string;
+  instant: string;
+  limits(osc: string, runaway: string): string;
+  settles(tau: string, D: string | null, limits: string): string;
+  damped(tau: string, D: string, limits: string): string;
+  unstable(tau: string, D: string, limits: string): string;
+  delayDamped(D: string): string;
+  delayUnstable(D: string): string;
+  oscillates(stocks: number, delayed: boolean): string;
+  fades(gain: string, D: string): string;
+  holds(gain: string, D: string, grows: boolean): string;
+  leaks(amplification: string): string;
+  doubles(time: string): string;
+  delayedGrowth(D: string): string;
+}
+
+const TEXT: Record<Lang, LoopTexts> = {
+  fr: {
+    reinforcing:
+      'Un changement s’amplifie en faisant le tour : une hausse entraîne encore plus de hausse, une baisse encore plus de baisse. Cercle vertueux… ou vicieux.',
+    balancing: 'Un changement se corrige en faisant le tour : le système résiste, revient vers un équilibre, ou oscille autour.',
+    instant:
+      'Ni accumulation ni retard sur cette boucle : rien ne lui donne de **rythme propre**, alors aledloop la ralentit artificiellement. Fais d’un de ses éléments une **accumulation**.',
+    limits: (osc, runaway) => `Avec ces forces, elle se met à osciller au-delà d’un retard d’environ ${osc}, et s’emballe au-delà de ${runaway}.`,
+    settles: (tau, D, limits) =>
+      `Temps de réaction : environ ${tau}. ${D ? `Le retard (${D}) est court en comparaison : elle` : 'Sans retard, elle'} revient à l’équilibre **en douceur**. ${limits}`,
+    damped: (tau, D, limits) =>
+      `Temps de réaction : environ ${tau}, pour un retard de ${D}. Elle corrige un peu tard : elle **dépasse l’équilibre et oscille** avant de se stabiliser. ${limits}`,
+    unstable: (tau, D, limits) =>
+      `Temps de réaction : environ ${tau}, pour un retard de ${D}. Le retard est trop long : elle corrige toujours à contretemps et **oscille de plus en plus**. ${limits}`,
+    delayDamped: (D) => `Sans accumulation, c’est le retard (${D}) qui rythme la boucle : elle **oscille en s’amortissant**.`,
+    delayUnstable: (D) => `Sans accumulation, c’est le retard (${D}) qui rythme la boucle, et ses liens sont si forts qu’elle **oscille de plus en plus**.`,
+    oscillates: (stocks, delayed) =>
+      `${stocks} accumulations se renvoient la balle : la boucle tend à **osciller**, comme proies et prédateurs. Un retour à l’équilibre sur l’une d’elles amortit les oscillations${delayed ? ', un retard les amplifie' : ''}.`,
+    fades: (gain, D) => `Sans accumulation, l’écart est multiplié par ${gain} à chaque tour (tous les ${D}) : il **s’éteint** peu à peu.`,
+    holds: (gain, D, grows) =>
+      `Sans accumulation, l’écart est multiplié par ${gain} à chaque tour (tous les ${D}) : il **${grows ? 's’amplifie' : 'se maintient'}**.`,
+    leaks: (amplification) =>
+      `Ses accumulations ont toutes une fuite (retour à l’équilibre) qui la freine, et ici **le frein l’emporte** : un écart est amplifié environ ×${amplification}, sans s’emballer. Plus ce chiffre est grand, plus on est près du point où elle s’emballerait.`,
+    doubles: (time) => `Sans frein, l’écart **double** environ tous les ${time}.`,
+    delayedGrowth: (D) => `L’écart **s’amplifie** à chaque tour. Le retard (${D}) ralentit l’emballement sans l’empêcher.`,
+  },
+  en: {
+    reinforcing:
+      'A change grows as it goes around: a rise brings an even bigger rise, a fall an even bigger fall. A virtuous circle… or a vicious one.',
+    balancing: 'A change corrects itself as it goes around: the system pushes back, returns to a balance, or swings around it.',
+    instant:
+      'No accumulation and no delay on this loop: nothing gives it a **rhythm of its own**, so aledloop slows it down artificially. Turn one of its elements into an **accumulation**.',
+    limits: (osc, runaway) => `With these strengths, it starts to oscillate beyond a delay of about ${osc}, and runs away beyond ${runaway}.`,
+    settles: (tau, D, limits) =>
+      `Reaction time: about ${tau}. ${D ? `The delay (${D}) is short in comparison: it` : 'With no delay, it'} returns to balance **smoothly**. ${limits}`,
+    damped: (tau, D, limits) =>
+      `Reaction time: about ${tau}, with a delay of ${D}. It corrects a little late: it **overshoots and oscillates** before settling down. ${limits}`,
+    unstable: (tau, D, limits) =>
+      `Reaction time: about ${tau}, with a delay of ${D}. The delay is too long: it always corrects at the wrong moment and **oscillates more and more**. ${limits}`,
+    delayDamped: (D) => `With no accumulation, the delay (${D}) sets the loop’s rhythm: it **oscillates and dies down**.`,
+    delayUnstable: (D) => `With no accumulation, the delay (${D}) sets the loop’s rhythm, and its links are so strong that it **oscillates more and more**.`,
+    oscillates: (stocks, delayed) =>
+      `${stocks} accumulations bounce the change back and forth: the loop tends to **oscillate**, like predators and prey. A return to balance on one of them dampens the oscillations${delayed ? '; a delay amplifies them' : ''}.`,
+    fades: (gain, D) => `With no accumulation, the gap is multiplied by ${gain} on each lap (every ${D}): it **fades away** little by little.`,
+    holds: (gain, D, grows) => `With no accumulation, the gap is multiplied by ${gain} on each lap (every ${D}): it **${grows ? 'grows' : 'holds steady'}**.`,
+    leaks: (amplification) =>
+      `All its accumulations leak (they return to balance), which acts as a brake, and here **the brake wins**: a gap is amplified about ×${amplification}, without running away. The bigger this number, the closer the loop is to running away.`,
+    doubles: (time) => `With no brake, the gap **doubles** about every ${time}.`,
+    delayedGrowth: (D) => `The gap **grows** on each lap. The delay (${D}) slows the runaway down without stopping it.`,
+  },
+};
+
+/**
  * Estime le comportement d'une boucle prise isolément, à partir des forces et des retards.
  * Ignore saturations, seuils et retours à l'équilibre : c'est un ordre de grandeur, pour comprendre.
  */
-export function analyzeLoop(doc: Doc, loop: Loop): LoopAnalysis {
+export function analyzeLoop(doc: Doc, loop: Loop, lang: Lang = 'fr'): LoopAnalysis {
+  const text = TEXT[lang];
   const nodes = new Map(doc.nodes.map((n) => [n.id, n]));
   const edges = new Map(doc.edges.map((e) => [e.id, e]));
   const stocks = loop.nodes.filter((id) => nodes.get(id)?.causal.kind === 'stock').length;
   const delay = loop.edges.reduce((sum, id) => sum + (edges.get(id)?.delay ?? 0), 0);
   const gain = loop.edges.reduce((prod, id) => prod * (edges.get(id)?.weight ?? 1), 1);
   const unit = doc.timeUnit;
-  const D = formatDuration(delay, unit);
-  const est = (v: number) => formatDuration(v, unit, true);
+  const D = formatDuration(delay, unit, lang);
+  const est = (v: number) => formatDuration(v, unit, lang, true);
+  const x = (v: number) => formatEstimate(v, lang);
   const result = (verdict: LoopVerdict, text: string): LoopAnalysis => ({ verdict, stocks, delay, gain, text });
 
-  if (loop.instant) {
-    return result(
-      'instant',
-      'Ni accumulation ni retard sur cette boucle : rien ne lui donne de **rythme propre**, alors aledloop la ralentit artificiellement. Fais d’un de ses éléments une **accumulation**.',
-    );
-  }
+  if (loop.instant) return result('instant', text.instant);
 
   if (loop.kind === 'B') {
     if (stocks === 1) {
-      const tau = 1 / gain;
+      const tau = est(1 / gain);
       const gd = gain * delay;
-      const limits = `Avec ces forces, elle se met à osciller au-delà d’un retard d’environ ${est(OSCILLATION_GD / gain)}, et s’emballe au-delà de ${est(INSTABILITY_GD / gain)}.`;
-      if (gd <= OSCILLATION_GD) {
-        const why = delay > 0 ? `Le retard (${D}) est court en comparaison : elle` : 'Sans retard, elle';
-        return result('settles', `Temps de réaction : environ ${est(tau)}. ${why} revient à l’équilibre **en douceur**. ${limits}`);
-      }
-      if (gd < INSTABILITY_GD) {
-        return result(
-          'damped',
-          `Temps de réaction : environ ${est(tau)}, pour un retard de ${D}. Elle corrige un peu tard : elle **dépasse l’équilibre et oscille** avant de se stabiliser. ${limits}`,
-        );
-      }
-      return result(
-        'unstable',
-        `Temps de réaction : environ ${est(tau)}, pour un retard de ${D}. Le retard est trop long : elle corrige toujours à contretemps et **oscille de plus en plus**. ${limits}`,
-      );
+      const limits = text.limits(est(OSCILLATION_GD / gain), est(INSTABILITY_GD / gain));
+      if (gd <= OSCILLATION_GD) return result('settles', text.settles(tau, delay > 0 ? D : null, limits));
+      if (gd < INSTABILITY_GD) return result('damped', text.damped(tau, D, limits));
+      return result('unstable', text.unstable(tau, D, limits));
     }
     if (stocks === 0) {
       // Seul le retard rythme la boucle : (1 + sD/3)³ + G = 0 est instable dès que G ≥ 8.
-      return gain < 8
-        ? result('damped', `Sans accumulation, c’est le retard (${D}) qui rythme la boucle : elle **oscille en s’amortissant**.`)
-        : result('unstable', `Sans accumulation, c’est le retard (${D}) qui rythme la boucle, et ses liens sont si forts qu’elle **oscille de plus en plus**.`);
+      return gain < 8 ? result('damped', text.delayDamped(D)) : result('unstable', text.delayUnstable(D));
     }
-    return result(
-      'oscillates',
-      `${stocks} accumulations se renvoient la balle : la boucle tend à **osciller**, comme proies et prédateurs. Un retour à l’équilibre sur l’une d’elles amortit les oscillations${delay > 0 ? ', un retard les amplifie' : ''}.`,
-    );
+    return result('oscillates', text.oscillates(stocks, delay > 0));
   }
 
   if (stocks === 0) {
-    if (gain < 1) return result('fades', `Sans accumulation, l’écart est multiplié par ${formatEstimate(gain)} à chaque tour (tous les ${D}) : il **s’éteint** peu à peu.`);
-    return result('grows', `Sans accumulation, l’écart est multiplié par ${formatEstimate(gain)} à chaque tour (tous les ${D}) : il **${gain > 1 ? 's’amplifie' : 'se maintient'}**.`);
+    if (gain < 1) return result('fades', text.fades(x(gain), D));
+    return result('grows', text.holds(x(gain), D, gain > 1));
   }
   // Si chaque accumulation fuit (retour à l'équilibre, constante τ), la boucle ne s'emballe que si son
   // gain « en régime établi » G × Π τ dépasse 1 ; sinon elle amplifie un écart de 1 / (1 − G × Π τ).
   const leaks = loop.nodes.map((id) => nodes.get(id)!.causal).filter((c) => c.kind === 'stock').map((c) => c.relax);
   if (leaks.every((tau) => tau > 0)) {
     const steady = gain * leaks.reduce((prod, tau) => prod * tau, 1);
-    if (steady < 1) {
-      return result(
-        'fades',
-        `Ses accumulations ont toutes une fuite (retour à l’équilibre) qui la freine, et ici **le frein l’emporte** : un écart est amplifié environ ×${formatEstimate(1 / (1 - steady))}, sans s’emballer. Plus ce chiffre est grand, plus on est près du point où elle s’emballerait.`,
-      );
-    }
+    if (steady < 1) return result('fades', text.leaks(x(1 / (1 - steady))));
   }
   if (delay === 0) {
     // k accumulations en chaîne, gain G : l'écart croît comme e^(G^(1/k) t).
-    const doubling = Math.LN2 / gain ** (1 / stocks);
-    return result('grows', `Sans frein, l’écart **double** environ tous les ${est(doubling)}.`);
+    return result('grows', text.doubles(est(Math.LN2 / gain ** (1 / stocks))));
   }
-  return result('grows', `L’écart **s’amplifie** à chaque tour. Le retard (${D}) ralentit l’emballement sans l’empêcher.`);
+  return result('grows', text.delayedGrowth(D));
 }

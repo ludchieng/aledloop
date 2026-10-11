@@ -1,12 +1,16 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
   import { describeFocus } from '../model/story';
   import Icon from './Icon.svelte';
   import { layout } from './layout.svelte';
   import { toasts } from './notify.svelte';
+  import Rich from './Rich.svelte';
   import { router } from './router.svelte';
   import { storyUi } from './story.svelte';
+
+  const t = $derived(i18n.t);
 
   // Comme ailleurs : on lit `rev` et on renvoie des copies, sinon rien ne se met à jour.
   const story = $derived.by(() => {
@@ -16,7 +20,7 @@
       reveal: doc.story.reveal,
       steps: doc.story.steps.map((s) => ({
         ...s,
-        summary: describeFocus(doc, s),
+        summary: describeFocus(doc, s, i18n.lang),
         pulseValue: s.pulse ? `${s.pulse.node}|${s.pulse.delta}` : '',
       })),
     };
@@ -24,7 +28,7 @@
 
   const nodes = $derived.by(() => {
     void editor.rev;
-    return editor.doc.nodes.map((n) => ({ id: n.id, label: n.label.trim() || 'sans nom' }));
+    return editor.doc.nodes.map((n) => ({ id: n.id, label: n.label.trim() || i18n.t.common.unnamed }));
   });
 
   // L'étape active peut disparaître (annuler, nouveau document…).
@@ -72,33 +76,31 @@
   }
 
   function present() {
-    if (!router.present(Math.max(0, activeIndex))) toasts.show('Ajoute d’abord une étape au récit.');
+    if (!router.present(Math.max(0, activeIndex))) toasts.show(t.story.addFirst);
   }
 </script>
 
 {#if storyUi.picking && activeIndex >= 0}
   <div class="banner card" role="status">
     <Icon name="target" size={18} />
-    <span>Touche les éléments à mettre en avant à l’<b>étape {activeIndex + 1}</b>.</span>
-    <button class="btn primary" onclick={() => (storyUi.picking = false)}>Terminé</button>
+    <span><Rich text={t.story.picking(activeIndex + 1)} /></span>
+    <button class="btn primary" onclick={() => (storyUi.picking = false)}>{t.story.done}</button>
   </div>
 {/if}
 
 <!-- Sur téléphone, pendant le choix, le panneau se replie pour laisser voir le diagramme. -->
-<aside class="panel card" aria-label="Récit" hidden={layout.narrow && storyUi.picking}>
+<aside class="panel card" aria-label={t.story.aria} hidden={layout.narrow && storyUi.picking}>
   <header>
-    <h2>Récit</h2>
-    <button class="btn close" aria-label="Fermer le récit" title="Fermer" onclick={() => storyUi.toggle()}>
+    <h2>{t.story.title}</h2>
+    <button class="btn close" aria-label={t.story.close} title={t.common.close} onclick={() => storyUi.toggle()}>
       <Icon name="close" size={18} />
     </button>
   </header>
-  <p class="intro">
-    Raconte ton système étape par étape : à chaque étape, un texte, des éléments mis en avant, et si tu veux une action (augmenter ou diminuer un élément).
-  </p>
+  <p class="intro">{t.story.intro}</p>
 
   <label class="check">
     <input type="checkbox" checked={story.reveal} onchange={(e) => editor.setReveal(e.currentTarget.checked)} />
-    <span><b>Construire le diagramme au fil du récit</b> : un élément n’apparaît qu’une fois mis en avant.</span>
+    <span><Rich text={t.story.reveal} /></span>
   </label>
 
   <ol class="steps" bind:this={list}>
@@ -109,47 +111,47 @@
         <div class="step-head" onclick={() => activate(step.id)}>
           <span class="num">{i + 1}</span>
           <span class="grow"></span>
-          <button class="btn mini" aria-label="Monter" title="Monter" disabled={i === 0} onclick={() => editor.moveStep(step.id, -1)}>
+          <button class="btn mini" aria-label={t.story.up} title={t.story.up} disabled={i === 0} onclick={() => editor.moveStep(step.id, -1)}>
             <Icon name="up" size={16} />
           </button>
           <button
             class="btn mini"
-            aria-label="Descendre"
-            title="Descendre"
+            aria-label={t.story.down}
+            title={t.story.down}
             disabled={i === story.steps.length - 1}
             onclick={() => editor.moveStep(step.id, 1)}
           >
             <Icon name="chevron" size={16} />
           </button>
-          <button class="btn mini danger" aria-label="Supprimer l’étape" title="Supprimer l’étape" onclick={() => editor.removeStep(step.id)}>
+          <button class="btn mini danger" aria-label={t.story.deleteStep} title={t.story.deleteStep} onclick={() => editor.removeStep(step.id)}>
             <Icon name="trash" size={16} />
           </button>
         </div>
 
         <textarea
           rows="3"
-          placeholder="Ce que tu racontes à cette étape… (**gras** pour insister)"
+          placeholder={t.story.placeholder}
           value={step.text}
           onfocus={() => activate(step.id)}
           oninput={(e) => editor.updateStep(step.id, { text: e.currentTarget.value }, 'text:' + step.id)}
         ></textarea>
 
         <div class="focus">
-          <span class="label">Mis en avant</span>
+          <span class="label">{t.story.focus}</span>
           <span class="summary">{step.summary}</span>
           <button class="btn pick" class:active={active && storyUi.picking} onclick={() => togglePicking(step.id)}>
             <Icon name="target" size={16} />
-            {active && storyUi.picking ? 'Terminé' : 'Choisir'}
+            {active && storyUi.picking ? t.story.done : t.story.choose}
           </button>
         </div>
 
         <label class="action">
-          <span class="label">Action</span>
+          <span class="label">{t.story.action}</span>
           <select value={step.pulseValue} onchange={(e) => setPulse(step.id, e.currentTarget.value)} onfocus={() => activate(step.id)}>
-            <option value="">Aucune</option>
+            <option value="">{t.story.noAction}</option>
             {#each nodes as n (n.id)}
-              <option value="{n.id}|1">▲ Augmenter « {n.label} »</option>
-              <option value="{n.id}|-1">▼ Diminuer « {n.label} »</option>
+              <option value="{n.id}|1">{t.story.increase(n.label)}</option>
+              <option value="{n.id}|-1">{t.story.decrease(n.label)}</option>
             {/each}
           </select>
         </label>
@@ -158,9 +160,9 @@
   </ol>
 
   <footer>
-    <button class="btn" onclick={addStep}><Icon name="plus" size={18} /> Ajouter une étape</button>
+    <button class="btn" onclick={addStep}><Icon name="plus" size={18} /> {t.story.addStep}</button>
     <button class="btn primary" disabled={story.steps.length === 0} onclick={present}>
-      <Icon name="present" size={18} /> Présenter
+      <Icon name="present" size={18} /> {t.story.present}
     </button>
   </footer>
 </aside>
@@ -219,7 +221,7 @@
     cursor: pointer;
   }
 
-  .check b {
+  .check :global(b) {
     color: var(--ink);
   }
 

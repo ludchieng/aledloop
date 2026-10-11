@@ -3,15 +3,6 @@
 export const COLOR_KEYS = ['terracotta', 'ochre', 'sage', 'slate', 'plum', 'sand'] as const;
 export type ColorKey = (typeof COLOR_KEYS)[number];
 
-export const COLOR_NAMES: Record<ColorKey, string> = {
-  terracotta: 'Terracotta',
-  ochre: 'Ocre',
-  sage: 'Sauge',
-  slate: 'Ardoise',
-  plum: 'Prune',
-  sand: 'Sable',
-};
-
 export interface Swatch {
   /** Remplissage pastel du galet. */
   fill: string;

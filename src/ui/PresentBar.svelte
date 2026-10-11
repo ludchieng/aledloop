@@ -1,9 +1,10 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
-  import { richText } from '../model/story';
   import { sim } from '../sim/session.svelte';
   import Icon from './Icon.svelte';
+  import Rich from './Rich.svelte';
   import { router } from './router.svelte';
   import { presenter } from './story.svelte';
 
@@ -13,6 +14,7 @@
     return editor.doc.story.steps;
   });
   const step = $derived(steps[presenter.index]);
+  const t = $derived(i18n.t);
   const last = $derived(presenter.index >= steps.length - 1);
 
   let fullscreen = $state(!!document.fullscreenElement);
@@ -28,19 +30,17 @@
 <div class="present">
   {#key presenter.index}
     <article class="narration card" in:fly={{ y: 10, duration: 350 }}>
-      <span class="count">Étape {presenter.index + 1} sur {steps.length}</span>
+      <span class="count">{t.present.step(presenter.index + 1, steps.length)}</span>
       {#if step?.text.trim()}
-        <p>
-          {#each richText(step.text) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}
-        </p>
+        <p><Rich text={step.text} /></p>
       {:else}
-        <p class="empty">Pas de texte pour cette étape.</p>
+        <p class="empty">{t.present.noText}</p>
       {/if}
     </article>
   {/key}
 
-  <nav class="controls card" aria-label="Navigation du récit">
-    <button class="btn" aria-label="Étape précédente" title="Précédente (←)" disabled={presenter.index === 0} onclick={() => presenter.prev()}>
+  <nav class="controls card" aria-label={t.present.nav}>
+    <button class="btn" aria-label={t.present.prev} title={t.present.prevTitle} disabled={presenter.index === 0} onclick={() => presenter.prev()}>
       <Icon name="prev" />
     </button>
     <div class="dots" class:many={steps.length > 10}>
@@ -49,33 +49,33 @@
           class="dot"
           class:active={i === presenter.index}
           class:done={i < presenter.index}
-          aria-label="Aller à l’étape {i + 1}"
+          aria-label={t.present.goTo(i + 1)}
           aria-current={i === presenter.index ? 'step' : undefined}
           onclick={() => presenter.go(i)}
         ></button>
       {/each}
     </div>
     {#if last}
-      <button class="btn primary next" onclick={() => router.close()}>Terminer</button>
+      <button class="btn primary next" onclick={() => router.close()}>{t.present.finish}</button>
     {:else}
-      <button class="btn primary next" title="Suivante (→ ou Espace)" onclick={() => presenter.next()}>
-        Suivant <Icon name="next" size={18} />
+      <button class="btn primary next" title={t.present.nextTitle} onclick={() => presenter.next()}>
+        {t.present.next} <Icon name="next" size={18} />
       </button>
     {/if}
     <span class="sep"></span>
-    <button class="btn" aria-label="Remettre les niveaux de départ" title="Remettre les niveaux de départ" onclick={() => sim.reset()}>
+    <button class="btn" aria-label={t.toolbar.resetTitle} title={t.toolbar.resetTitle} onclick={() => sim.reset()}>
       <Icon name="reset" size={20} />
     </button>
     <button
       class="btn"
       class:active={fullscreen}
-      aria-label="Plein écran"
-      title="Plein écran"
+      aria-label={t.present.fullscreen}
+      title={t.present.fullscreen}
       onclick={toggleFullscreen}
     >
       <Icon name="maximize" size={20} />
     </button>
-    <button class="btn" aria-label="Quitter la présentation" title="Quitter (Échap)" onclick={() => router.close()}>
+    <button class="btn" aria-label={t.present.quit} title={t.present.quitTitle} onclick={() => router.close()}>
       <Icon name="close" size={20} />
     </button>
   </nav>
@@ -117,7 +117,7 @@
     line-height: 1.45;
   }
 
-  p b {
+  p :global(b) {
     font-weight: 700;
     color: var(--terracotta-stroke);
   }

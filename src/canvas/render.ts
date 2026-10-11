@@ -1,3 +1,4 @@
+import type { Lang } from '../i18n/lang';
 import type { Selection } from '../model/editor.svelte';
 import { formatDuration } from '../model/time';
 import type { Doc, SysEdge, SysNode, TimeUnit } from '../model/types';
@@ -63,6 +64,8 @@ export interface View {
   dpr: number;
   camera: Camera;
   theme: Theme;
+  /** Langue des étiquettes de retard (« 3 ans », « 3 years »). */
+  lang: Lang;
 }
 
 /** Opacité des éléments hors de la boucle mise en évidence. */
@@ -278,7 +281,7 @@ function drawEdge(view: View, g: EdgeGeom, e: SysEdge, unit: TimeUnit, selected:
   ctx.fill();
 
   // Retard : deux traits en travers du lien (la notation classique des diagrammes causaux), et sa durée.
-  if (e.delay > 0) drawDelay(view, g, formatDuration(e.delay, unit), width);
+  if (e.delay > 0) drawDelay(view, g, formatDuration(e.delay, unit, view.lang), width);
 
   // Pastille + / −
   const color = e.polarity === 1 ? theme.positive : theme.negative;

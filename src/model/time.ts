@@ -1,34 +1,47 @@
+import { LOCALES, type Lang } from '../i18n/lang';
 import { MAX_DURATION, MIN_DURATION, type TimeUnit } from './types';
 
-const NAMES: Record<TimeUnit, [one: string, many: string]> = {
-  second: ['seconde', 'secondes'],
-  minute: ['minute', 'minutes'],
-  hour: ['heure', 'heures'],
-  day: ['jour', 'jours'],
-  week: ['semaine', 'semaines'],
-  month: ['mois', 'mois'],
-  year: ['an', 'ans'],
+const NAMES: Record<Lang, Record<TimeUnit, [one: string, many: string]>> = {
+  fr: {
+    second: ['seconde', 'secondes'],
+    minute: ['minute', 'minutes'],
+    hour: ['heure', 'heures'],
+    day: ['jour', 'jours'],
+    week: ['semaine', 'semaines'],
+    month: ['mois', 'mois'],
+    year: ['an', 'ans'],
+  },
+  en: {
+    second: ['second', 'seconds'],
+    minute: ['minute', 'minutes'],
+    hour: ['hour', 'hours'],
+    day: ['day', 'days'],
+    week: ['week', 'weeks'],
+    month: ['month', 'months'],
+    year: ['year', 'years'],
+  },
 };
 
-/** Nom de l'unité, accordé comme en français : pluriel à partir de 2. */
-export function unitName(unit: TimeUnit, value = 2): string {
-  return NAMES[unit][Math.abs(value) >= 2 ? 1 : 0];
+/** Nom de l'unité, accordé : en français, pluriel à partir de 2 (« 1,5 an ») ; en anglais, sauf pour 1 (« 1.5 years »). */
+export function unitName(unit: TimeUnit, value = 2, lang: Lang = 'fr'): string {
+  const plural = lang === 'fr' ? Math.abs(value) >= 2 : Math.abs(value) !== 1;
+  return NAMES[lang][unit][plural ? 1 : 0];
 }
 
-/** Nombre à la française, au plus deux décimales : « 2,5 ». */
-export function formatNumber(value: number, digits = 2): string {
-  return value.toLocaleString('fr-FR', { maximumFractionDigits: digits });
+/** Nombre à au plus deux décimales, à la façon de la langue : « 2,5 », « 2.5 ». */
+export function formatNumber(value: number, digits = 2, lang: Lang = 'fr'): string {
+  return value.toLocaleString(LOCALES[lang], { maximumFractionDigits: digits });
 }
 
 /** Ordre de grandeur, deux chiffres significatifs : « 0,32 », « 1,4 », « 270 ». */
-export function formatEstimate(value: number): string {
-  return value.toLocaleString('fr-FR', { maximumSignificantDigits: 2 });
+export function formatEstimate(value: number, lang: Lang = 'fr'): string {
+  return value.toLocaleString(LOCALES[lang], { maximumSignificantDigits: 2 });
 }
 
 /** « 3 ans », « 1,5 jour ». `estimate` arrondit à deux chiffres significatifs. */
-export function formatDuration(value: number, unit: TimeUnit, estimate = false): string {
+export function formatDuration(value: number, unit: TimeUnit, lang: Lang = 'fr', estimate = false): string {
   const shown = estimate ? Number(value.toPrecision(2)) : Math.round(value * 100) / 100;
-  return `${estimate ? formatEstimate(value) : formatNumber(value)} ${unitName(unit, shown)}`;
+  return `${estimate ? formatEstimate(value, lang) : formatNumber(value, 2, lang)} ${unitName(unit, shown, lang)}`;
 }
 
 /** Valeurs « rondes » proposées par les boutons − et + d'une durée. */
@@ -40,7 +53,7 @@ export function stepDuration(value: number, dir: 1 | -1): number {
   return [...LADDER].reverse().find((v) => v < value - 1e-9) ?? 0;
 }
 
-/** Lit une durée tapée par l'utilisateur (« 2,5 », « 3 »). Vide ou invalide : 0. Sinon au moins MIN_DURATION. */
+/** Lit une durée tapée par l'utilisateur (« 2,5 », « 2.5 », « 3 »). Vide ou invalide : 0. Sinon au moins MIN_DURATION. */
 export function parseDuration(text: string): number {
   const v = parseFloat(text.replace(',', '.').trim());
   if (!Number.isFinite(v) || v <= 0) return 0;

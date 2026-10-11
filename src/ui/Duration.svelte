@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { formatNumber, parseDuration, stepDuration, unitName } from '../model/time';
+  import { i18n } from '../i18n/i18n.svelte';
+  import { parseDuration, stepDuration } from '../model/time';
   import { TIME_UNITS, type TimeUnit } from '../model/types';
 
   let {
@@ -24,20 +25,20 @@
 
 <!-- Sur tablette, les boutons − et + évitent d'ouvrir le clavier ; la saisie reste possible. -->
 <div class="duration" role="group" aria-label={label}>
-  <button class="btn step" aria-label="Moins" disabled={value <= 0} onclick={() => onchange(stepDuration(value, -1))}>−</button>
+  <button class="btn step" aria-label={i18n.t.duration.less} disabled={value <= 0} onclick={() => onchange(stepDuration(value, -1))}>−</button>
   <input
     type="text"
     inputmode="decimal"
     aria-label={label}
-    value={value > 0 ? formatNumber(value) : ''}
+    value={value > 0 ? i18n.number(value) : ''}
     placeholder={zero}
     onchange={(e) => onchange(parseDuration(e.currentTarget.value))}
     onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
   />
-  <button class="btn step" aria-label="Plus" onclick={() => onchange(stepDuration(value, 1))}>+</button>
-  <select aria-label="Unité de temps du diagramme" value={unit} onchange={(e) => onunit(e.currentTarget.value as TimeUnit)}>
+  <button class="btn step" aria-label={i18n.t.duration.more} onclick={() => onchange(stepDuration(value, 1))}>+</button>
+  <select aria-label={i18n.t.duration.unit} value={unit} onchange={(e) => onunit(e.currentTarget.value as TimeUnit)}>
     {#each TIME_UNITS as u (u)}
-      <option value={u}>{unitName(u, value || 2)}</option>
+      <option value={u}>{i18n.unit(u, value || 2)}</option>
     {/each}
   </select>
 </div>

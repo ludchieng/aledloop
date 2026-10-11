@@ -1,3 +1,4 @@
+import type { Lang } from '../i18n/lang';
 import type { Doc, StoryStep, SysNode } from './types';
 
 /**
@@ -50,14 +51,20 @@ export function framingNodes(doc: Doc, index: number): SysNode[] {
   return hidden ? doc.nodes.filter((n) => !hidden.has(n.id)) : doc.nodes;
 }
 
+const FOCUS_TEXT: Record<Lang, { unnamed: string; links: (n: number) => string; nothing: string; and: string }> = {
+  fr: { unnamed: 'sans nom', links: (n) => (n === 1 ? '1 lien' : `${n} liens`), nothing: 'Rien : tout le diagramme est visible.', and: 'et' },
+  en: { unnamed: 'unnamed', links: (n) => (n === 1 ? '1 link' : `${n} links`), nothing: 'Nothing: the whole diagram is visible.', and: 'and' },
+};
+
 /** Résumé lisible des éléments mis en avant : « Lapins, Renards et 2 liens ». */
-export function describeFocus(doc: Doc, step: StoryStep): string {
-  const names = doc.nodes.filter((n) => step.focus.includes(n.id)).map((n) => n.label.trim() || 'sans nom');
+export function describeFocus(doc: Doc, step: StoryStep, lang: Lang = 'fr'): string {
+  const text = FOCUS_TEXT[lang];
+  const names = doc.nodes.filter((n) => step.focus.includes(n.id)).map((n) => n.label.trim() || text.unnamed);
   const links = doc.edges.filter((e) => step.focus.includes(e.id)).length;
   const parts = [...names];
-  if (links > 0) parts.push(links === 1 ? '1 lien' : `${links} liens`);
-  if (parts.length === 0) return 'Rien : tout le diagramme est visible.';
-  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}`;
+  if (links > 0) parts.push(text.links(links));
+  if (parts.length === 0) return text.nothing;
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} ${text.and} ${parts[parts.length - 1]}`;
 }
 
 /** Découpe un texte « avec du **gras** » en segments, sans HTML (donc sans risque d'injection). */

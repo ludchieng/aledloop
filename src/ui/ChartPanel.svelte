@@ -2,8 +2,8 @@
   import uPlot from 'uplot';
   import 'uplot/dist/uPlot.min.css';
   import { onMount, untrack } from 'svelte';
+  import { i18n } from '../i18n/i18n.svelte';
   import { editor } from '../model/editor.svelte';
-  import { formatNumber, unitName } from '../model/time';
   import { sim } from '../sim/session.svelte';
   import { THEMES, type ColorKey } from '../theme';
   import Duration from './Duration.svelte';
@@ -11,6 +11,7 @@
   import { prefs } from './prefs.svelte';
 
   const FONT = '600 11px "Nunito Variable", Nunito, system-ui, sans-serif';
+  const t = $derived(i18n.t);
   /** Rafraîchissement des courbes : 10 fois par seconde suffit à l'œil, et ménage la batterie. */
   const REFRESH_MS = 100;
 
@@ -23,7 +24,7 @@
       horizon: doc.horizon,
       series: doc.nodes.map((n, i) => ({
         id: n.id,
-        label: n.label.trim() || 'sans nom',
+        label: n.label.trim() || i18n.t.common.unnamed,
         color: n.color,
         // Deux éléments de même couleur : le second en pointillés, pour les distinguer.
         dashed: doc.nodes.slice(0, i).some((m) => m.color === n.color),
@@ -88,8 +89,8 @@
         y: { range: [0, 100] },
       },
       axes: [
-        { ...axis, size: 24, values: (_u, splits) => splits.map((v) => formatNumber(v, 1)) },
-        { ...axis, size: 40, splits: () => [0, 25, 50, 75, 100], values: (_u, splits) => splits.map((v) => `${v} %`) },
+        { ...axis, size: 24, values: (_u, splits) => splits.map((v) => i18n.number(v, 1)) },
+        { ...axis, size: 40, splits: () => [0, 25, 50, 75, 100], values: (_u, splits) => splits.map((v) => i18n.t.common.percent(v)) },
       ],
       series: [
         {},
@@ -137,10 +138,11 @@
     if (cursorIdx === null) updateReadout();
   }
 
-  // Nouvelle série, autre unité ou autre thème : on reconstruit le graphique.
+  // Nouvelle série, autre unité, autre thème ou autre langue : on reconstruit le graphique.
   $effect(() => {
     void model.series;
     void prefs.theme;
+    void i18n.lang;
     untrack(build);
   });
 
@@ -164,13 +166,13 @@
   const swatch = (color: ColorKey) => `var(--${color}-stroke)`;
 </script>
 
-<section class="chart card" aria-label="Courbes de la simulation">
+<section class="chart card" aria-label={t.chart.aria}>
   <header>
     <div class="top">
-      <h2>Courbes</h2>
-      <div class="horizon" title="Largeur de la fenêtre des courbes : la durée de simulation">
+      <h2>{t.chart.title}</h2>
+      <div class="horizon" title={t.chart.horizonTitle}>
         <Duration
-          label="Durée de simulation"
+          label={t.chart.horizon}
           value={model.horizon}
           unit={model.unit}
           zero="—"
@@ -178,22 +180,22 @@
           onunit={(u) => editor.setTimeUnit(u)}
         />
       </div>
-      <button class="btn close" aria-label="Masquer les courbes" title="Masquer les courbes" onclick={() => prefs.toggleChart()}>
+      <button class="btn close" aria-label={t.chart.hide} title={t.chart.hide} onclick={() => prefs.toggleChart()}>
         <Icon name="close" size={18} />
       </button>
     </div>
     <div class="sub">
-      <label class="stop" title="S’arrêter au bout de cette durée et garder toute l’histoire depuis le début, au lieu de faire défiler les courbes">
+      <label class="stop" title={t.chart.stopAtEndTitle}>
         <input type="checkbox" checked={prefs.stopAtEnd} onchange={(e) => prefs.setStopAtEnd(e.currentTarget.checked)} />
-        Arrêt à la fin
+        {t.chart.stopAtEnd}
       </label>
       <span class="when">
         {#if cursorTime !== null}
-          à {formatNumber(cursorTime, 1)} {unitName(model.unit, cursorTime)}
+          {t.chart.at(`${i18n.number(cursorTime, 1)} ${i18n.unit(model.unit, cursorTime)}`)}
         {:else if prefs.stopAtEnd}
-          du début à la fin
+          {t.chart.wholeRun}
         {:else}
-          fenêtre glissante
+          {t.chart.sliding}
         {/if}
       </span>
     </div>
@@ -201,21 +203,21 @@
 
   <div class="plot" bind:this={host}></div>
 
-  <div class="series" role="group" aria-label="Séries affichées">
+  <div class="series" role="group" aria-label={t.chart.series}>
     {#each model.series as s, i (s.id)}
       {@const off = hidden.includes(s.id)}
       <button
         class="serie"
         class:off
         aria-pressed={!off}
-        title={off ? `Afficher « ${s.label} »` : `Masquer « ${s.label} »`}
+        title={off ? t.chart.showSeries(s.label) : t.chart.hideSeries(s.label)}
         onclick={() => toggle(i, s.id)}
         onpointerenter={() => !off && plot?.setSeries(i + 1, { focus: true })}
         onpointerleave={() => plot?.setSeries(null, { focus: false })}
       >
         <span class="dot" class:dashed={s.dashed} style:--c={swatch(s.color)}></span>
         {s.label}
-        <b>{readout[i] === undefined ? '' : `${Math.round(readout[i])} %`}</b>
+        <b>{readout[i] === undefined ? '' : t.common.percent(Math.round(readout[i]))}</b>
       </button>
     {/each}
   </div>

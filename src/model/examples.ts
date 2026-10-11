@@ -1,7 +1,10 @@
+import type { Lang } from '../i18n/lang';
 import { doc, STOCK, type Example } from './exampleKit';
+import { EXAMPLES_EN } from './examples.en';
 import { MORE_EXAMPLES } from './examplesMore';
+import type { Doc } from './types';
 
-export { LEVELS, TOPICS, type Example, type Level, type Topic } from './exampleKit';
+export { type Example, type Level, type Topic } from './exampleKit';
 
 const BASE_EXAMPLES: Example[] = [
   // --- Niveau 1 : premiers pas ---------------------------------------------------------
@@ -1124,3 +1127,18 @@ const BASE_EXAMPLES: Example[] = [
 
 /** Toute la bibliothèque : les premiers exemples, puis les suivants (industrie, nature, société, histoire, ingénierie…). */
 export const EXAMPLES: Example[] = [...BASE_EXAMPLES, ...MORE_EXAMPLES];
+
+/** Titre, description et comportement mis en scène, dans la langue demandée (les exemples sont écrits en français). */
+export function exampleText(ex: Example, lang: Lang): Pick<Example, 'title' | 'description' | 'shows'> {
+  return (lang === 'en' && EXAMPLES_EN[ex.id]) || ex;
+}
+
+/** Le diagramme de l'exemple, avec ses étiquettes et son récit dans la langue demandée. */
+export function buildExample(ex: Example, lang: Lang): Doc {
+  const built = ex.build();
+  const text = lang === 'en' ? EXAMPLES_EN[ex.id] : undefined;
+  if (!text) return built;
+  for (const n of built.nodes) n.label = text.labels[n.id] ?? n.label;
+  built.story.steps.forEach((step, i) => (step.text = text.story[i] ?? step.text));
+  return built;
+}

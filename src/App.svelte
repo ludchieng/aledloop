@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Canvas from './canvas/Canvas.svelte';
   import ChartPanel from './ui/ChartPanel.svelte';
   import GalleryPanel from './ui/GalleryPanel.svelte';
@@ -7,7 +8,9 @@
   import { sim } from './sim/session.svelte';
   import { THEMES, themeCssVars } from './theme';
   import Inspector from './ui/Inspector.svelte';
+  import { i18n } from './i18n/i18n.svelte';
   import PresentBar from './ui/PresentBar.svelte';
+  import Rich from './ui/Rich.svelte';
   import StoryPanel from './ui/StoryPanel.svelte';
   import { presenter, storyUi } from './ui/story.svelte';
   import { prefs } from './ui/prefs.svelte';
@@ -29,6 +32,14 @@
   const empty = $derived.by(() => {
     void editor.rev;
     return editor.doc.nodes.length === 0;
+  });
+
+  const t = $derived(i18n.t);
+
+  // Langue de la page (lecteurs d'écran, césure, correcteur orthographique) ; un exemple intact la suit.
+  $effect(() => {
+    document.documentElement.lang = i18n.lang;
+    untrack(() => router.relocalize());
   });
 
   // Thème : variables CSS sur :root + couleur de la barre du navigateur.
@@ -122,9 +133,9 @@
 
   {#if empty && editor.mode === 'edit' && !router.loading}
     <div class="welcome card">
-      <h2>Une page blanche</h2>
-      <p>Avec le <b>crayon</b>, dessine un <b>cercle</b> pour créer un élément, puis trace un <b>trait</b> d’un élément à un autre pour les relier.</p>
-      <button class="btn primary" onclick={() => router.showGallery()}>Voir les exemples</button>
+      <h2>{t.app.welcomeTitle}</h2>
+      <p><Rich text={t.app.welcomeText} /></p>
+      <button class="btn primary" onclick={() => router.showGallery()}>{t.app.seeExamples}</button>
     </div>
   {/if}
 
@@ -192,7 +203,7 @@
     color: var(--ink-soft);
   }
 
-  .welcome b {
+  .welcome :global(b) {
     color: var(--ink);
   }
 

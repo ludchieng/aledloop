@@ -50,7 +50,8 @@ export interface Host {
   picking(): string | null;
   requestRender(): void;
   setCursor(cursor: string): void;
-  hint(message: string): void;
+  /** Un trait du crayon n'a rien donné : rappeler comment dessiner (le texte est dans la langue de l'interface). */
+  penHint(): void;
 }
 
 const DOUBLE_TAP_MS = 350;
@@ -413,7 +414,7 @@ export class Interaction implements Pick<Overlay, 'hover' | 'linkTarget' | 'trai
     } else if (endNode) {
       editor.createLinkedNode(points[0].x, points[0].y, { to: endNode.id });
     } else {
-      this.host.hint('Dessine un cercle pour créer un élément, ou trace un trait d’un élément à un autre pour les relier.');
+      this.host.penHint();
     }
   }
 

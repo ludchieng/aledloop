@@ -1,22 +1,32 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { i18n } from '../i18n/i18n.svelte';
+  import type { Lang } from '../i18n/lang';
   import { findSection } from './help';
   import Icon from './Icon.svelte';
   import { router } from './router.svelte';
 
-  let html = $state<string | null>(null);
+  /** La page dans chaque langue. Mêmes numéros de section des deux côtés (les liens « Pourquoi ? » y mènent). */
+  const SOURCES: Record<Lang, () => Promise<{ default: string }>> = {
+    fr: () => import('../../docs/moteur.md?raw'),
+    en: () => import('../../docs/how-it-works.md?raw'),
+  };
+
+  let pages = $state<Partial<Record<Lang, string>>>({});
   let failed = $state(false);
+  const html = $derived(pages[i18n.lang] ?? null);
   let body: HTMLDivElement | undefined = $state();
   let closeButton: HTMLButtonElement | undefined = $state();
 
-  // Chargés à la première ouverture seulement : marked et la page.
-  async function load() {
-    const [{ renderMarkdown }, page] = await Promise.all([import('./doc'), import('../../docs/moteur.md?raw')]);
-    html = renderMarkdown(page.default);
+  // Chargés à la première ouverture seulement : marked et la page de la langue.
+  async function load(lang: Lang) {
+    const [{ renderMarkdown }, page] = await Promise.all([import('./doc'), SOURCES[lang]()]);
+    pages[lang] = renderMarkdown(page.default);
   }
 
   $effect(() => {
-    if (router.helpOpen && html === null && !failed) load().catch(() => (failed = true));
+    const lang = i18n.lang;
+    if (router.helpOpen && !pages[lang] && !failed) load(lang).catch(() => (failed = true));
   });
 
   // Une fois la page rendue, on va à la section demandée et on la fait briller un instant.
@@ -42,18 +52,18 @@
 {#if router.helpOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="backdrop" onclick={() => router.close()}></div>
-  <div class="help card" role="dialog" aria-modal="true" aria-label="Comment ça marche">
-    <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => router.close()}>
+  <div class="help card" role="dialog" aria-modal="true" aria-label={i18n.t.help.aria}>
+    <button bind:this={closeButton} class="btn close" aria-label={i18n.t.common.close} title={i18n.t.common.closeEsc} onclick={() => router.close()}>
       <Icon name="close" size={20} />
     </button>
     <div class="doc" bind:this={body}>
       {#if html}
-        <!-- Contenu issu de docs/moteur.md (fichier du projet), pas de l'utilisateur. -->
+        <!-- Contenu issu de docs/moteur.md ou docs/how-it-works.md (fichiers du projet), pas de l'utilisateur. -->
         {@html html}
       {:else if failed}
-        <p>Impossible de charger la documentation. Vérifie ta connexion et réessaie.</p>
+        <p>{i18n.t.help.failed}</p>
       {:else}
-        <p class="loading">Chargement…</p>
+        <p class="loading">{i18n.t.help.loading}</p>
       {/if}
     </div>
   </div>

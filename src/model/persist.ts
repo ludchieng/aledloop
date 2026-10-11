@@ -52,15 +52,21 @@ function parseCausal(raw: unknown, legacyInit: unknown, legacy: boolean): Causal
   };
 }
 
+/** Ce qu'on a lu n'est pas un modèle aledloop. L'interface affiche le message dans sa langue. */
+export class NotADocError extends Error {
+  constructor() {
+    super('Ce fichier ne ressemble pas à un modèle aledloop.');
+    this.name = 'NotADocError';
+  }
+}
+
 /**
  * Valide et nettoie un document venu de l'extérieur (fichier, URL, localStorage).
  * Lance une erreur si ce n'est pas un document aledloop ; sinon répare ce qui peut l'être
  * (valeurs manquantes, couleurs inconnues, liens orphelins ou en double) et migre les anciennes versions.
  */
 export function parseDoc(raw: unknown): Doc {
-  if (!isObj(raw) || !Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) {
-    throw new Error('Ce fichier ne ressemble pas à un modèle aledloop.');
-  }
+  if (!isObj(raw) || !Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) throw new NotADocError();
   const legacy = raw.version !== 2;
   const nodes: SysNode[] = [];
   const ids = new Set<string>();
