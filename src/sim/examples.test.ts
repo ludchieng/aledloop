@@ -243,13 +243,22 @@ describe('exemples : systèmes complexes', () => {
     expect(play('dettePublique', [[0, 'taux', 1], [0, 'croissance', 1]], ['dette']).dette[30]).toBeLessThan(0.6);
   });
 
-  it('mutuelle : les tarifs dépassent puis se stabilisent ; des clients trop sensibles au prix déclenchent la spirale', () => {
-    const { tarif, societaires, rentabilite } = play('mutuelle', [[0, 'sinistralite', 1]], ['tarif', 'societaires', 'rentabilite']);
-    expect(Math.max(...tarif)).toBeGreaterThan(tarif[30] + 0.02);
-    expect(rentabilite[30]).toBeCloseTo(0.8, 1);
-    expect(societaires[30]).toBeGreaterThan(0.3);
-    const spirale = play('mutuelle', [[0, 'sinistralite', 1]], ['societaires'], 1, weight('tarif', 'societaires', 1.5)).societaires;
-    expect(spirale[30]).toBeLessThan(0.05);
+  it('mutuelle : cycle de souscription contenu ; l’antisélection déclenche la spirale ; la prévention allège les cotisations', () => {
+    const ids = ['cotisation', 'rentabilite', 'reserves', 'societaires', 'risque'];
+    const { cotisation, rentabilite, reserves, societaires } = play('mutuelle', [[0, 'sinistralite', 1]], ids);
+    expect(rentabilite[0]).toBeLessThan(0.35);
+    expect(Math.min(...reserves)).toBeLessThan(0.55);
+    const peak = argmax(cotisation);
+    expect(cotisation[peak]).toBeGreaterThan(cotisation[20] + 0.05);
+    expect(Math.min(...cotisation.slice(peak))).toBeLessThan(cotisation[20] - 0.02);
+    expect(rentabilite[20]).toBeCloseTo(0.5, 1);
+    expect(societaires[20]).toBeGreaterThan(0.42);
+    const spirale = play('mutuelle', [[0, 'sinistralite', 1]], ids, 1, weight('ecart', 'risque', 0.5));
+    expect(spirale.societaires[20]).toBeLessThan(0.15);
+    expect(spirale.risque[20]).toBeGreaterThan(0.9);
+    expect(spirale.reserves[20]).toBeLessThan(0.35);
+    const prevention = play('mutuelle', [[0, 'sinistralite', 1], [0, 'prevention', 1]], ['cotisation']).cotisation;
+    expect(prevention[20]).toBeLessThan(cotisation[20] - 0.08);
   });
 
   it('immobilier : les ventes chutent tout de suite, les prix lentement, puis repartent', () => {
