@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { findSection, help } from './help.svelte';
+  import { findSection } from './help';
   import Icon from './Icon.svelte';
+  import { router } from './router.svelte';
 
   let html = $state<string | null>(null);
   let failed = $state(false);
@@ -15,13 +16,13 @@
   }
 
   $effect(() => {
-    if (help.open && html === null && !failed) load().catch(() => (failed = true));
+    if (router.helpOpen && html === null && !failed) load().catch(() => (failed = true));
   });
 
   // Une fois la page rendue, on va à la section demandée et on la fait briller un instant.
   $effect(() => {
-    const section = help.section;
-    if (!help.open || !html || !body) return;
+    const section = router.helpSection;
+    if (!router.helpOpen || !html || !body) return;
     const el = body;
     tick().then(() => {
       closeButton?.focus({ preventScroll: true });
@@ -38,11 +39,11 @@
   });
 </script>
 
-{#if help.open}
+{#if router.helpOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="backdrop" onclick={() => help.close()}></div>
+  <div class="backdrop" onclick={() => router.close()}></div>
   <div class="help card" role="dialog" aria-modal="true" aria-label="Comment ça marche">
-    <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => help.close()}>
+    <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => router.close()}>
       <Icon name="close" size={20} />
     </button>
     <div class="doc" bind:this={body}>

@@ -1,22 +1,12 @@
 <script lang="ts">
   import { editor } from '../model/editor.svelte';
-  import { encodeDoc, parseDoc } from '../model/persist';
-  import { emptyDoc } from '../model/types';
-  import { gallery } from './gallery.svelte';
+  import { parseDoc } from '../model/persist';
   import Icon from './Icon.svelte';
-  import { replaceDoc } from './load';
   import { prefs } from './prefs.svelte';
   import { toasts } from './notify.svelte';
-  import { help } from './help.svelte';
-
-  let { onloaded }: { onloaded: () => void } = $props();
+  import { router } from './router.svelte';
 
   let fileInput: HTMLInputElement;
-
-  function newDoc() {
-    if (editor.doc.nodes.length === 0) return;
-    replaceDoc(emptyDoc(), 'Nouveau diagramme.', onloaded);
-  }
 
   function save() {
     const blob = new Blob([JSON.stringify(editor.doc, null, 2)], { type: 'application/json' });
@@ -33,17 +23,18 @@
     e.currentTarget.value = '';
     if (!file) return;
     try {
-      replaceDoc(parseDoc(JSON.parse(await file.text())), `« ${file.name} » ouvert.`, onloaded);
+      await router.openFile(parseDoc(JSON.parse(await file.text())));
+      toasts.show(`« ${file.name} » ouvert.`);
     } catch (err) {
       toasts.show(err instanceof SyntaxError ? 'Ce fichier n’est pas du JSON valide.' : (err as Error).message);
     }
   }
 
   async function share() {
-    const url = `${location.origin}${location.pathname}#m=${await encodeDoc(editor.doc)}`;
+    const url = await router.shareUrl();
     try {
       await navigator.clipboard.writeText(url);
-      toasts.show('Lien copié : il contient tout le diagramme.');
+      toasts.show(url.includes('#m=') ? 'Lien copié : il contient tout le diagramme.' : 'Lien vers cet exemple copié.');
     } catch {
       window.prompt('Copie ce lien pour partager ton diagramme :', url);
     }
@@ -63,11 +54,11 @@
       <h1>aledloop</h1>
     </div>
     <span class="sep"></span>
-    <button class="btn" onclick={() => gallery.show()} title="Bibliothèque d’exemples">
+    <button class="btn" onclick={() => router.showGallery()} title="Bibliothèque d’exemples">
       <Icon name="book" size={19} /><span class="label">Exemples</span>
     </button>
     <span class="sep"></span>
-    <button class="btn" onclick={newDoc} title="Nouveau diagramme"><Icon name="file" size={19} /><span class="label">Nouveau</span></button>
+    <button class="btn" onclick={() => router.newDoc()} title="Nouveau diagramme"><Icon name="file" size={19} /><span class="label">Nouveau</span></button>
     <button class="btn" onclick={() => fileInput.click()} title="Ouvrir un fichier .json"><Icon name="folder" size={19} /><span class="label">Ouvrir</span></button>
     <button class="btn" onclick={save} title="Enregistrer en .json"><Icon name="save" size={19} /><span class="label">Enregistrer</span></button>
     <button class="btn" onclick={share} title="Copier un lien de partage"><Icon name="link" size={19} /><span class="label">Partager</span></button>
@@ -75,7 +66,7 @@
 
   <!-- À droite, l'application : l'aide et le thème. -->
   <nav class="app card" aria-label="Application">
-    <button class="btn" onclick={() => help.show()} title="Comment ça marche : la simulation expliquée">
+    <button class="btn" onclick={() => router.showHelp()} title="Comment ça marche : la simulation expliquée">
       <Icon name="help" size={19} /><span class="label">Aide</span>
     </button>
     <button

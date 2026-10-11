@@ -1,13 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import Canvas from './canvas/Canvas.svelte';
   import ChartPanel from './ui/ChartPanel.svelte';
   import GalleryPanel from './ui/GalleryPanel.svelte';
-  import { gallery } from './ui/gallery.svelte';
   import HelpPanel from './ui/HelpPanel.svelte';
-  import { help } from './ui/help.svelte';
   import { editor } from './model/editor.svelte';
-  import { decodeDoc, loadLocal, saveLocal } from './model/persist';
   import { sim } from './sim/session.svelte';
   import { THEMES, themeCssVars } from './theme';
   import Inspector from './ui/Inspector.svelte';
@@ -15,17 +11,19 @@
   import StoryPanel from './ui/StoryPanel.svelte';
   import { presenter, storyUi } from './ui/story.svelte';
   import { prefs } from './ui/prefs.svelte';
+  import { router } from './ui/router.svelte';
   import Toasts from './ui/Toasts.svelte';
   import { toasts } from './ui/notify.svelte';
   import Toolbar from './ui/Toolbar.svelte';
   import TopBar from './ui/TopBar.svelte';
   import ZoomControls from './ui/ZoomControls.svelte';
 
-  // Le document sauvegardé est chargé avant le premier rendu, pour que le canvas le cadre d'emblée.
-  const saved = loadLocal();
-  if (saved) editor.load(saved, false);
+  let canvas: Canvas | undefined;
 
-  let canvas: Canvas;
+  // L'adresse dit quoi ouvrir (mon diagramme, un exemple, un lien partagé…). Chargé avant le premier
+  // rendu, pour que le canvas le cadre d'emblée ; ensuite, le routeur recadre à chaque changement.
+  router.start(() => canvas?.fit());
+
   let zoom = $state(1);
 
   const empty = $derived.by(() => {
@@ -41,30 +39,13 @@
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEMES[prefs.theme].paper);
   });
 
-  // Sauvegarde automatique, regroupée (pas à chaque pixel d'un glisser).
+  // Sauvegarde automatique, regroupée (pas à chaque pixel d'un glisser) : mon diagramme, ou les
+  // modifications de l'exemple ou du partage ouvert.
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     void editor.rev;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveLocal(editor.doc), 400);
-  });
-
-  // Ouverture d'un lien partagé (#m=…) : annulable, pour retrouver son propre diagramme.
-  onMount(() => {
-    const match = location.hash.match(/^#m=([\w-]+)/);
-    if (!match) return;
-    history.replaceState(null, '', location.pathname + location.search);
-    decodeDoc(match[1])
-      .then((doc) => {
-        editor.load(doc);
-        canvas.fit();
-        if (doc.story.steps.length > 0) {
-          toasts.show('Diagramme partagé ouvert : il contient un récit.', { label: 'Le présenter', run: () => presenter.start() }, 10000);
-        } else {
-          toasts.show('Diagramme partagé ouvert.', { label: 'Revenir au mien', run: () => { editor.undo(); canvas.fit(); } }, 8000);
-        }
-      })
-      .catch(() => toasts.show('Ce lien de partage est abîmé : impossible de l’ouvrir.'));
+    saveTimer = setTimeout(() => router.save(), 400);
   });
 
   const isTyping = (e: KeyboardEvent) =>
@@ -72,11 +53,8 @@
 
   function onkeydown(e: KeyboardEvent) {
     // Une fenêtre ouverte (aide, bibliothèque) prend la main : Échap la ferme, les autres raccourcis attendent.
-    if (help.open || gallery.open) {
-      if (e.key === 'Escape') {
-        help.close();
-        gallery.close();
-      }
+    if (router.route.page !== 'doc') {
+      if (e.key === 'Escape') router.close();
       return;
     }
     if (isTyping(e)) return;
@@ -97,7 +75,7 @@
       } else if (e.key === 'Escape') {
         // D'abord l'inspecteur d'une boucle ouverte pendant le récit, puis le récit lui-même.
         if (editor.selection) editor.selection = null;
-        else presenter.stop();
+        else router.close();
       }
       return;
     }
@@ -142,11 +120,11 @@
 <main>
   <Canvas bind:this={canvas} onzoom={(z) => (zoom = z)} onhint={(m) => toasts.show(m)} />
 
-  {#if empty && editor.mode === 'edit'}
+  {#if empty && editor.mode === 'edit' && !router.loading}
     <div class="welcome card">
       <h2>Une page blanche</h2>
       <p>Avec le <b>crayon</b>, dessine un <b>cercle</b> pour créer un élément, puis trace un <b>trait</b> d’un élément à un autre pour les relier.</p>
-      <button class="btn primary" onclick={() => gallery.show()}>Voir les exemples</button>
+      <button class="btn primary" onclick={() => router.showGallery()}>Voir les exemples</button>
     </div>
   {/if}
 
@@ -155,17 +133,17 @@
   {#if editor.mode === 'present'}
     <PresentBar />
   {:else}
-    <TopBar onloaded={() => canvas.fit()} />
+    <TopBar />
     {#if storyUi.open && editor.mode === 'edit'}
       <StoryPanel />
     {/if}
     {#if editor.mode === 'sim' && prefs.showChart}
       <ChartPanel />
     {/if}
-    <ZoomControls {zoom} onzoomby={(f) => canvas.zoomBy(f)} onfit={() => canvas.fit()} />
+    <ZoomControls {zoom} onzoomby={(f) => canvas?.zoomBy(f)} onfit={() => canvas?.fit()} />
     <Toolbar />
   {/if}
-  <GalleryPanel onloaded={() => canvas.fit()} />
+  <GalleryPanel />
   <HelpPanel />
   <Toasts />
 </main>

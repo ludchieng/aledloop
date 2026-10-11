@@ -5,7 +5,8 @@
   import Icon from './Icon.svelte';
   import { layout } from './layout.svelte';
   import { toasts } from './notify.svelte';
-  import { presenter, storyUi } from './story.svelte';
+  import { router } from './router.svelte';
+  import { storyUi } from './story.svelte';
 
   // Comme ailleurs : on lit `rev` et on renvoie des copies, sinon rien ne se met à jour.
   const story = $derived.by(() => {
@@ -71,7 +72,7 @@
   }
 
   function present() {
-    if (!presenter.start(Math.max(0, activeIndex))) toasts.show('Ajoute d’abord une étape au récit.');
+    if (!router.present(Math.max(0, activeIndex))) toasts.show('Ajoute d’abord une étape au récit.');
   }
 </script>
 

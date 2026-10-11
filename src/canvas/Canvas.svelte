@@ -7,7 +7,7 @@
   import { sim } from '../sim/session.svelte';
   import { THEMES } from '../theme';
   import { prefs } from '../ui/prefs.svelte';
-  import { help } from '../ui/help.svelte';
+  import { router } from '../ui/router.svelte';
   import { presenter, storyUi } from '../ui/story.svelte';
   import { Camera, type Margins } from './camera';
   import { docBounds, loopLabels, nodesBounds, type LoopLabel, type Pt } from './geometry';
@@ -268,7 +268,7 @@
   function onkeydown(e: KeyboardEvent) {
     // Espace maintenu déplace la vue en édition. En simulation, il met en pause, et en présentation il fait
     // avancer le récit (gérés par App) ; dans l'aide, il fait défiler la page.
-    if (e.code === 'Space' && !isTyping(e) && editor.mode === 'edit' && !help.open) {
+    if (e.code === 'Space' && !isTyping(e) && editor.mode === 'edit' && !router.helpOpen) {
       e.preventDefault();
       if (!interaction.spaceDown) {
         interaction.spaceDown = true;
@@ -362,8 +362,9 @@
     previousMode = mode;
   });
 
-  // Présentation : à chaque étape, la vue glisse vers les éléments concernés.
+  // Présentation : à chaque étape (ou nouveau document), la vue glisse vers les éléments concernés.
   $effect(() => {
+    void editor.rev;
     if (editor.mode !== 'present') {
       prevHidden = null;
       appearing.clear();

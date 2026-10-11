@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Editor } from './editor.svelte';
+import { emptyDoc } from './types';
 
 describe('Editor', () => {
   it('crée, relie et annule pas à pas', () => {
@@ -13,6 +14,20 @@ describe('Editor', () => {
     expect(ed.doc.nodes).toHaveLength(2);
     ed.redo();
     expect(ed.doc.edges).toHaveLength(1);
+  });
+
+  it('ouvrir un autre document repart d’un historique vide (load, lui, reste annulable)', () => {
+    const ed = new Editor();
+    ed.createNode(0, 0);
+    ed.load(emptyDoc());
+    expect(ed.canUndo).toBe(true);
+    ed.undo();
+    expect(ed.doc.nodes).toHaveLength(1);
+    ed.open(emptyDoc());
+    expect(ed.canUndo).toBe(false);
+    expect(ed.canRedo).toBe(false);
+    ed.undo();
+    expect(ed.doc.nodes).toHaveLength(0);
   });
 
   it('ne duplique pas un lien existant', () => {

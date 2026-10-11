@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import markdown from '../../docs/moteur.md?raw';
 import { renderMarkdown } from './doc';
-import { findSection, SECTIONS } from './help.svelte';
+import { findSection, SECTIONS } from './help';
 
 describe('documentation dans l’application', () => {
   const html = renderMarkdown(markdown);

@@ -1,25 +1,9 @@
 import type { LoopAnalysis } from '../model/loops';
 
 /**
- * Aide « Comment ça marche » : la page docs/moteur.md, affichée dans l'application.
- * Ce module reste léger (pas de marked ni de KaTeX) : l'inspecteur l'importe pour ses liens « Pourquoi ? ».
+ * Aide « Comment ça marche » : la page docs/moteur.md, affichée dans l'application à l'adresse « aide »
+ * ou « aide/6.2 » (voir router.svelte.ts). Ce module reste léger (pas de marked) : les tests l'importent.
  */
-class Help {
-  open = $state(false);
-  /** Section à afficher à l'ouverture (« 3 », « 6.2 »…), sinon le début. */
-  section = $state<string | null>(null);
-
-  show(section: string | null = null) {
-    this.section = section;
-    this.open = true;
-  }
-
-  close() {
-    this.open = false;
-  }
-}
-
-export const help = new Help();
 
 /** Sections de docs/moteur.md vers lesquelles l'interface renvoie. Un test vérifie qu'elles existent. */
 export const SECTIONS = {

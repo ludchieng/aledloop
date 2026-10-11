@@ -7,7 +7,8 @@
   import Icon, { type IconName } from './Icon.svelte';
   import { toasts } from './notify.svelte';
   import { prefs } from './prefs.svelte';
-  import { presenter, storyUi } from './story.svelte';
+  import { router } from './router.svelte';
+  import { storyUi } from './story.svelte';
 
   // Raccourcis à la Figma : V sélection, P crayon (la plume de Figma), E gomme (comme Photoshop et Excalidraw).
   const TOOLS: { id: Tool; icon: IconName; label: string; key: string; tip: string }[] = [
@@ -113,7 +114,7 @@
         <span class="label">Récit</span>
       </button>
       {#if storySteps > 0}
-        <button class="btn present" title="Présenter le récit, étape par étape" onclick={() => presenter.start(0)}>
+        <button class="btn present" title="Présenter le récit, étape par étape" onclick={() => router.present()}>
           <Icon name="present" size={18} />
           <span class="label">Présenter</span>
         </button>
@@ -180,7 +181,7 @@
       </button>
       {#if storySteps > 0}
         <!-- Perdu dans la simulation ? Le récit explique le modèle, étape par étape. -->
-        <button class="btn" title="Présenter le récit, étape par étape" aria-label="Présenter" onclick={() => presenter.start(0)}>
+        <button class="btn" title="Présenter le récit, étape par étape" aria-label="Présenter" onclick={() => router.present()}>
           <Icon name="present" />
         </button>
       {/if}

@@ -29,7 +29,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
-      - run: npm run build
+      # Le site est servi sous /<nom du dépôt>/ (ex. /aledloop/) : le routage a besoin de chemins absolus.
+      - run: npm run build -- --base=/${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

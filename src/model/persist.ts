@@ -141,11 +141,62 @@ export function saveLocal(doc: Doc): void {
 }
 
 export function loadLocal(): Doc | null {
+  return readDoc(STORAGE_KEY);
+}
+
+function readDoc(key: string): Doc | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? parseDoc(JSON.parse(raw)) : null;
   } catch {
     return null;
+  }
+}
+
+// --- Brouillons : les modifications d'un exemple ou d'un diagramme partagé ---------
+
+/**
+ * Mon diagramme (ci-dessus) est gardé pour toujours. Un exemple ou un diagramme partagé qu'on modifie
+ * garde aussi ses modifications, sous sa propre clé : en y revenant (retour arrière, rechargement,
+ * bibliothèque), on les retrouve. On ne garde que les MAX_DRAFTS plus récents.
+ */
+const DRAFT_PREFIX = 'aledloop:draft:';
+const DRAFTS_KEY = 'aledloop:drafts';
+export const MAX_DRAFTS = 30;
+
+/** Les clés des brouillons, du plus récent au plus ancien. */
+export function draftKeys(): string[] {
+  try {
+    const keys: unknown = JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? '[]');
+    return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDraft(key: string, doc: Doc): void {
+  try {
+    localStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(doc));
+    const keys = [key, ...draftKeys().filter((k) => k !== key)];
+    for (const old of keys.splice(MAX_DRAFTS)) localStorage.removeItem(DRAFT_PREFIX + old);
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(keys));
+  } catch {
+    // Comme la sauvegarde auto : un confort, pas une garantie.
+  }
+}
+
+export function loadDraft(key: string): Doc | null {
+  return readDoc(DRAFT_PREFIX + key);
+}
+
+/** Appelé à chaque sauvegarde d'un diagramme intact : ne fait rien s'il n'y a pas de brouillon. */
+export function removeDraft(key: string): void {
+  try {
+    if (localStorage.getItem(DRAFT_PREFIX + key) === null) return;
+    localStorage.removeItem(DRAFT_PREFIX + key);
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftKeys().filter((k) => k !== key)));
+  } catch {
+    // stockage indisponible
   }
 }
 

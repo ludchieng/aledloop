@@ -114,12 +114,24 @@ export class Editor {
 
   // --- Modifications ---------------------------------------------------------
 
-  /** Remplace le document. Annulable par défaut (ouvrir un fichier, charger un exemple…). */
+  /** Remplace le document (nouveau diagramme, retour à l'original). Annulable par défaut. */
   load(doc: Doc, undoable = true) {
     if (undoable) this.checkpoint();
     this.doc = doc;
     this.selection = null;
     this.changed();
+  }
+
+  /**
+   * Ouvre un autre document : l'historique d'annulation repart de zéro. Pour revenir au précédent,
+   * c'est le bouton retour du navigateur (Ctrl+Z ne doit pas mélanger deux diagrammes à une même adresse).
+   */
+  open(doc: Doc) {
+    this.past = [];
+    this.future = [];
+    this.lastKey = null;
+    this.syncHistory();
+    this.load(doc, false);
   }
 
   private insertNode(x: number, y: number, r = NODE_RADIUS): SysNode {

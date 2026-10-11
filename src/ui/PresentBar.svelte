@@ -4,10 +4,14 @@
   import { richText } from '../model/story';
   import { sim } from '../sim/session.svelte';
   import Icon from './Icon.svelte';
+  import { router } from './router.svelte';
   import { presenter } from './story.svelte';
 
-  // Le document ne change pas pendant une présentation : une lecture directe suffit.
-  const steps = editor.doc.story.steps;
+  // Le document ne change pas pendant une présentation, sauf si l'on navigue d'un récit à un autre (retour arrière).
+  const steps = $derived.by(() => {
+    void editor.rev;
+    return editor.doc.story.steps;
+  });
   const step = $derived(steps[presenter.index]);
   const last = $derived(presenter.index >= steps.length - 1);
 
@@ -52,7 +56,7 @@
       {/each}
     </div>
     {#if last}
-      <button class="btn primary next" onclick={() => presenter.stop()}>Terminer</button>
+      <button class="btn primary next" onclick={() => router.close()}>Terminer</button>
     {:else}
       <button class="btn primary next" title="Suivante (→ ou Espace)" onclick={() => presenter.next()}>
         Suivant <Icon name="next" size={18} />
@@ -71,7 +75,7 @@
     >
       <Icon name="maximize" size={20} />
     </button>
-    <button class="btn" aria-label="Quitter la présentation" title="Quitter (Échap)" onclick={() => presenter.stop()}>
+    <button class="btn" aria-label="Quitter la présentation" title="Quitter (Échap)" onclick={() => router.close()}>
       <Icon name="close" size={20} />
     </button>
   </nav>

@@ -6,7 +6,8 @@
   import { MAX_RADIUS, MAX_WEIGHT, MIN_RADIUS, MIN_WEIGHT, type NodeKind, type ThresholdMode } from '../model/types';
   import { COLOR_KEYS, COLOR_NAMES } from '../theme';
   import Duration from './Duration.svelte';
-  import { help, loopSection, SECTIONS } from './help.svelte';
+  import { loopSection, SECTIONS } from './help';
+  import { router } from './router.svelte';
   import Icon from './Icon.svelte';
   import { toasts } from './notify.svelte';
   import { layout } from './layout.svelte';
@@ -149,7 +150,7 @@
         <Segmented label="Nature de l’élément" options={KIND_OPTIONS} value={c.kind} onchange={(v) => setKind(id, v, c.thresholdMode)} />
         <p class="help">
           {#each richText(KIND_HELP[c.kind]) as seg, i (i)}{#if seg.bold}<b>{seg.text}</b>{:else}{seg.text}{/if}{/each}
-          <button class="why" onclick={() => help.show(SECTIONS.nature)}>En savoir plus</button>
+          <button class="why" onclick={() => router.showHelp(SECTIONS.nature)}>En savoir plus</button>
         </p>
       </div>
 
@@ -290,7 +291,7 @@
             ? `L’effet arrive progressivement, en moyenne au bout de ${formatDuration(edge.delay, unit)}.`
             : 'L’effet est immédiat.'}
           Dans une boucle équilibrante, un retard long par rapport à son temps de réaction la fait osciller : touche l’étiquette de la boucle pour savoir à partir de quand.
-          <button class="why" onclick={() => help.show(SECTIONS.delay)}>Comment marche un retard ?</button>
+          <button class="why" onclick={() => router.showHelp(SECTIONS.delay)}>Comment marche un retard ?</button>
         </p>
       </div>
 
@@ -335,7 +336,7 @@
         </dl>
         <p class="help">
           Estimation pour la boucle seule : saturations, seuils et autres boucles peuvent changer la donne.
-          <button class="why" onclick={() => help.show(loopSection(a))}>Pourquoi ?</button>
+          <button class="why" onclick={() => router.showHelp(loopSection(a))}>Pourquoi ?</button>
         </p>
       </section>
     {/if}

@@ -1,15 +1,11 @@
 <script lang="ts">
   import { drawThumbnail } from '../canvas/thumbnail';
-  import { EXAMPLES, LEVELS, TOPICS, type Example, type Level, type Topic } from '../model/examples';
+  import { EXAMPLES, LEVELS, TOPICS, type Level, type Topic } from '../model/examples';
   import type { Doc } from '../model/types';
   import { THEMES } from '../theme';
-  import { gallery } from './gallery.svelte';
   import Icon from './Icon.svelte';
-  import { replaceDoc } from './load';
   import { prefs } from './prefs.svelte';
-  import { presenter } from './story.svelte';
-
-  let { onloaded }: { onloaded: () => void } = $props();
+  import { router } from './router.svelte';
 
   // Construits une fois : les miniatures et le nombre d'étapes des récits en ont besoin.
   const items = EXAMPLES.map((ex) => {
@@ -26,21 +22,13 @@
       .filter((s) => s.items.length > 0),
   );
 
+  // Les exemples qu'on a modifiés : on les retrouve tels quels en les rouvrant. Relu à chaque ouverture.
+  const edited = $derived(router.galleryOpen ? router.editedExamples() : new Set<string>());
+
   let closeButton: HTMLButtonElement | undefined = $state();
   $effect(() => {
-    if (gallery.open) closeButton?.focus({ preventScroll: true });
+    if (router.galleryOpen) closeButton?.focus({ preventScroll: true });
   });
-
-  function open(ex: Example) {
-    gallery.close();
-    replaceDoc(ex.build(), `Exemple « ${ex.title} » chargé.`, onloaded);
-  }
-
-  function tell(ex: Example) {
-    gallery.close();
-    replaceDoc(ex.build(), null, onloaded);
-    presenter.start(0);
-  }
 
   /** Dessine la miniature, et la redessine si le thème change (lecture réactive de prefs.theme). */
   function thumbnail(doc: Doc) {
@@ -50,16 +38,16 @@
   }
 </script>
 
-{#if gallery.open}
+{#if router.galleryOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="backdrop" onclick={() => gallery.close()}></div>
+  <div class="backdrop" onclick={() => router.close()}></div>
   <div class="gallery card" role="dialog" aria-modal="true" aria-label="Bibliothèque d’exemples">
     <header>
       <div class="titles">
         <h2>Bibliothèque d’exemples</h2>
         <p>Choisis un système : ouvre-le pour jouer avec, ou laisse-toi raconter son histoire.</p>
       </div>
-      <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => gallery.close()}>
+      <button bind:this={closeButton} class="btn close" aria-label="Fermer" title="Fermer (Échap)" onclick={() => router.close()}>
         <Icon name="close" size={20} />
       </button>
     </header>
@@ -84,7 +72,7 @@
           <ul class="grid">
             {#each section.items as { ex, doc, steps } (ex.id)}
               <li class="item">
-                <button class="open" onclick={() => open(ex)} title="Ouvrir « {ex.title} »">
+                <button class="open" onclick={() => router.openExample(ex.id)} title="Ouvrir « {ex.title} »">
                   <canvas class="thumb" {@attach thumbnail(doc)} aria-hidden="true"></canvas>
                   <span class="body">
                     <strong>{ex.title}</strong>
@@ -94,8 +82,11 @@
                 <div class="foot">
                   <span class="tag">{TOPICS[ex.topic]}</span>
                   <span class="tag shows">{ex.shows}</span>
+                  {#if edited.has(ex.id)}
+                    <span class="tag edited" title="Tu l’as modifié : il s’ouvrira avec tes modifications">Modifié</span>
+                  {/if}
                   {#if steps > 0}
-                    <button class="btn tell" onclick={() => tell(ex)} title="Présenter le récit, étape par étape">
+                    <button class="btn tell" onclick={() => router.openExample(ex.id, true)} title="Présenter le récit, étape par étape">
                       <Icon name="present" size={16} /> Raconter · {steps}
                     </button>
                   {/if}
@@ -327,6 +318,11 @@
 
   .tag.shows {
     background: color-mix(in srgb, var(--sage) 70%, transparent);
+    color: var(--ink);
+  }
+
+  .tag.edited {
+    background: color-mix(in srgb, var(--ochre) 75%, transparent);
     color: var(--ink);
   }
 

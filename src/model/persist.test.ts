@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EXAMPLES } from './examples';
-import { decodeDoc, encodeDoc, parseDoc } from './persist';
-import { DEFAULT_HORIZON, defaultCausal, MAX_DURATION, MAX_WEIGHT, MIN_DURATION, MIN_WEIGHT } from './types';
+import { decodeDoc, draftKeys, encodeDoc, loadDraft, MAX_DRAFTS, parseDoc, removeDraft, saveDraft } from './persist';
+import { DEFAULT_HORIZON, defaultCausal, emptyDoc, MAX_DURATION, MAX_WEIGHT, MIN_DURATION, MIN_WEIGHT } from './types';
 
 describe('parseDoc', () => {
   it('refuse ce qui n’est pas un modèle', () => {
@@ -90,6 +90,57 @@ describe('parseDoc', () => {
       const doc = ex.build();
       expect(parseDoc(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
     }
+  });
+});
+
+describe('brouillons', () => {
+  /** Un localStorage en mémoire : les tests tournent sous Node, sans navigateur. */
+  function memoryStorage() {
+    const data = new Map<string, string>();
+    return {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, String(v)),
+      removeItem: (k: string) => void data.delete(k),
+      get size() {
+        return data.size;
+      },
+    };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('gardent les modifications d’un diagramme sous sa clé, et les oublient sur demande', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    const doc = EXAMPLES.find((e) => e.id === 'albedo')!.build();
+    doc.nodes[0].label = 'Modifié';
+    saveDraft('ex:albedo', doc);
+    expect(loadDraft('ex:albedo')?.nodes[0].label).toBe('Modifié');
+    expect(loadDraft('ex:proies')).toBeNull();
+    expect(draftKeys()).toEqual(['ex:albedo']);
+    removeDraft('ex:albedo');
+    expect(loadDraft('ex:albedo')).toBeNull();
+    expect(draftKeys()).toEqual([]);
+  });
+
+  it('ne gardent que les plus récents', () => {
+    const storage = memoryStorage();
+    vi.stubGlobal('localStorage', storage);
+    for (let i = 0; i < MAX_DRAFTS + 5; i++) saveDraft(`m:${i}`, emptyDoc());
+    saveDraft('m:3', emptyDoc()); // réutilisé : redevient le plus récent
+    const keys = draftKeys();
+    expect(keys).toHaveLength(MAX_DRAFTS);
+    expect(keys[0]).toBe('m:3');
+    expect(keys).not.toContain('m:4');
+    expect(loadDraft('m:4')).toBeNull();
+    expect(storage.size).toBe(MAX_DRAFTS + 1); // les brouillons et leur index
+  });
+
+  it('ne plantent pas sans stockage (mode privé…)', () => {
+    vi.stubGlobal('localStorage', undefined);
+    expect(() => saveDraft('ex:albedo', emptyDoc())).not.toThrow();
+    expect(loadDraft('ex:albedo')).toBeNull();
+    expect(draftKeys()).toEqual([]);
+    expect(() => removeDraft('ex:albedo')).not.toThrow();
   });
 });
 
