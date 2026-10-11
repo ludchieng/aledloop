@@ -423,6 +423,36 @@ describe('exemples : deuxième série', () => {
     expect(relance[24]).toBeLessThan(0.45);
   });
 
+  it('2008 et crise de l’euro : banques, puis dette et taux ; sans la BCE la déflation, avec elle la reprise', () => {
+    const krach: [number, string, 1 | -1][] = [[0, 'prets', -1], [0.5, 'prets', -1]];
+    const ids = ['defauts', 'banques', 'dette', 'spread', 'activite', 'inflation'];
+    const sans = play('crise2008', krach, ids, 0.5);
+    expect(Math.max(...sans.defauts.slice(0, 8))).toBeGreaterThan(0.45);
+    expect(Math.min(...sans.banques.slice(0, 8))).toBeLessThan(0.32);
+    expect(sans.spread[20]).toBeGreaterThan(0.6);
+    expect(sans.activite[20]).toBeLessThan(0.15);
+    expect(sans.inflation[20]).toBeLessThan(0.2);
+    const avec = play('crise2008', [...krach, [5, 'bce', 1]], ids, 0.5);
+    expect(avec.dette[10]).toBeGreaterThan(0.6);
+    expect(avec.spread[10]).toBeGreaterThan(0.4);
+    expect(avec.spread[16]).toBeLessThan(0.2);
+    expect(avec.activite[20]).toBeGreaterThan(0.4);
+    expect(avec.inflation[20]).toBeGreaterThan(0.45);
+  });
+
+  it('bulle de l’IA : envolée puis éclatement quand les coûts dépassent les revenus ; des usages forts l’évitent', () => {
+    const ids = ['valorisations', 'rentabilite', 'usages'];
+    const base = play('bulleIA', [[0, 'engouement', 1]], ids, 0.5);
+    const peak = argmax(base.valorisations);
+    expect(base.valorisations[peak]).toBeGreaterThan(0.65);
+    expect(peak / 2).toBeLessThan(5);
+    expect(Math.min(...base.valorisations.slice(peak))).toBeLessThan(0.25);
+    expect(Math.min(...base.rentabilite)).toBeLessThan(0.25);
+    expect(base.valorisations[20]).toBeGreaterThan(0.5);
+    const forts = play('bulleIA', [[0, 'engouement', 1]], ['valorisations'], 0.5, weight('datacenters', 'usages', 0.8)).valorisations;
+    expect(Math.min(...forts.slice(argmax(forts.slice(0, 10))))).toBeGreaterThan(0.6);
+  });
+
   it('réacteur : stable grâce à l’effet Doppler, même quand le refroidissement faiblit ; fusion avec un coefficient de vide fort', () => {
     const { fissions, temperature } = play('reacteur', [[0, 'barres', -1], [60, 'refroidissement', -1]], ['fissions', 'temperature']);
     expect(fissions[50]).toBeGreaterThan(0.65);

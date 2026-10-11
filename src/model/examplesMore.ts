@@ -898,6 +898,216 @@ export const MORE_EXAMPLES: Example[] = [
       }),
   },
   {
+    id: 'crise2008',
+    title: 'De 2008 à la crise de l’euro',
+    description: 'Des crédits immobiliers risqués aux États-Unis, une crise bancaire mondiale, des États qui s’endettent pour sauver les banques, la zone euro au bord de la rupture, puis la menace de déflation.',
+    level: 3,
+    topic: 'histoire',
+    shows: 'Crises en chaîne',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 10,
+        nodes: [
+          ['prets', 'Crédits immobiliers risqués', 'sand', -1000, -250, 56, { init: 0.7, relax: 1.5 }],
+          ['immobilier', 'Prix de l’immobilier', 'ochre', -720, -250, 62, { kind: 'stock', init: 0.8, relax: 2, saturate: true }],
+          ['defauts', 'Défauts de remboursement', 'terracotta', -440, -250, 58, { init: 0.1 }],
+          ['banques', 'Solidité des banques', 'slate', -440, 100, 64, { kind: 'stock', relax: 1 }],
+          ['credit', 'Crédit', 'sage', -100, 20, 54],
+          ['sauvetages', 'Sauvetages des banques', 'plum', -440, 400, 56],
+          ['dette', 'Dette publique', 'plum', 160, 400, 62, { kind: 'stock', init: 0.4, relax: 6 }],
+          ['spread', 'Taux d’emprunt des États fragiles', 'terracotta', 160, 160, 60, { kind: 'stock', init: 0.2, relax: 1 }],
+          ['activite', 'Activité économique', 'sage', 450, -100, 62, { kind: 'stock', relax: 1.5 }],
+          ['austerite', 'Austérité', 'sand', 450, 250, 54],
+          ['inflation', 'Inflation', 'ochre', 750, -100, 54],
+          ['bce', 'BCE : « tout ce qu’il faudra »', 'slate', 750, 160, 56],
+        ],
+        edges: [
+          ['prets', 'immobilier', 1, 30],
+          ['immobilier', 'prets', 1, 30, { weight: 0.2 }],
+          ['immobilier', 'defauts', -1, 0, { weight: 1.5 }],
+          ['defauts', 'banques', -1, 0],
+          ['banques', 'credit', 1, 0],
+          ['credit', 'activite', 1, 0, { weight: 0.6 }],
+          ['activite', 'defauts', -1, 0, { weight: 0.5 }],
+          ['banques', 'sauvetages', -1, 30],
+          ['sauvetages', 'banques', 1, 30, { weight: 0.8 }],
+          ['sauvetages', 'dette', 1, 0, { weight: 0.3 }],
+          ['activite', 'dette', -1, 0, { weight: 0.2 }],
+          ['dette', 'spread', 1, 0, { weight: 1.2 }],
+          ['spread', 'banques', -1, 0, { weight: 0.3 }],
+          ['spread', 'austerite', 1, 0],
+          ['austerite', 'activite', -1, 0, { weight: 0.3 }],
+          ['austerite', 'dette', -1, 0, { weight: 0.1 }],
+          ['activite', 'inflation', 1, 0, { delay: 1 }],
+          ['inflation', 'dette', -1, 0, { weight: 0.05 }],
+          ['bce', 'spread', -1, 0, { weight: 2.5 }],
+          ['bce', 'inflation', 1, 0, { weight: 0.5 }],
+        ],
+        story: [
+          [
+            'États-Unis, 2006. Depuis dix ans, l’**immobilier** monte sans arrêt. Les banques prêtent même à des ménages fragiles, en pariant sur la hausse : ce sont les **crédits « subprimes »**.',
+            ['prets', 'immobilier', 'prets>immobilier'],
+          ],
+          [
+            'Plus les prix montent, plus on prête facilement (la maison sert de garantie), et plus les prix montent : une **boucle renforçante**, la bulle. Nous sommes à son sommet.',
+            ['prets', 'immobilier', 'prets>immobilier', 'immobilier>prets'],
+          ],
+          [
+            'Tant que les prix montent, presque personne ne fait **défaut** : on revend sa maison plus cher. Les **banques** du monde entier achètent ces crédits, découpés en produits financiers.',
+            ['immobilier', 'defauts', 'banques', 'immobilier>defauts', 'defauts>banques'],
+          ],
+          ['2007 : les taux remontent, les premiers emprunteurs ne peuvent plus payer. Les banques cessent de prêter.', ['prets'], ['prets', -1]],
+          [
+            'La bulle tourne à l’envers : moins de crédits, des prix qui baissent, encore moins de crédits. Et des maisons qui valent moins que leur prêt : les **défauts** explosent.',
+            ['prets', 'immobilier', 'defauts', 'prets>immobilier', 'immobilier>prets', 'immobilier>defauts'],
+            ['prets', -1],
+          ],
+          [
+            'Les pertes frappent les **banques**. Septembre 2008 : Lehman Brothers fait faillite. Plus personne ne sait qui détient les crédits pourris : les banques ne se prêtent plus entre elles.',
+            ['defauts', 'banques', 'defauts>banques'],
+          ],
+          [
+            'Le **crédit** gèle, l’**activité** plonge : c’est la pire récession depuis 1929. Des chômeurs, ce sont encore plus de défauts… une **boucle renforçante**.',
+            ['banques', 'credit', 'activite', 'defauts', 'banques>credit', 'credit>activite', 'activite>defauts', 'defauts>banques'],
+          ],
+          [
+            'Les États **sauvent les banques** (garanties, prises de participation) pour éviter un effondrement comme en 1930 : une **boucle équilibrante**.',
+            ['banques', 'sauvetages', 'banques>sauvetages', 'sauvetages>banques'],
+          ],
+          [
+            'Mais ces sauvetages se paient en **dette publique**. Et la récession fait fondre les impôts : la dette grimpe de deux côtés à la fois. La crise privée devient une crise des États.',
+            ['sauvetages', 'activite', 'dette', 'sauvetages>dette', 'activite>dette'],
+          ],
+          [
+            '2010, zone euro : les marchés doutent des pays les plus endettés (Grèce, Irlande, Portugal, Espagne, Italie). Leurs **taux d’emprunt** s’envolent.',
+            ['dette', 'spread', 'dette>spread'],
+          ],
+          [
+            'Or les banques de ces pays détiennent beaucoup de dette de leur propre État : quand elle perd de la valeur, les **banques** s’affaiblissent, il faut les sauver, la dette monte… C’est la **boucle souverains-banques**.',
+            ['spread', 'banques', 'sauvetages', 'dette', 'spread>banques', 'banques>sauvetages', 'sauvetages>dette', 'dette>spread'],
+          ],
+          [
+            'Pour rassurer les marchés, on impose l’**austérité** : baisse des dépenses, hausse des impôts. Sur le papier, la dette doit baisser.',
+            ['spread', 'austerite', 'dette', 'spread>austerite', 'austerite>dette'],
+          ],
+          [
+            'Mais l’austérité freine l’**activité**, ce qui réduit les recettes : la dette, rapportée à l’économie, monte quand même. Le FMI l’a reconnu en 2013 : l’effet sur la croissance avait été sous-estimé.',
+            ['austerite', 'activite', 'dette', 'austerite>activite', 'activite>dette'],
+          ],
+          [
+            'Avec une activité en berne, l’**inflation** tombe presque à zéro : la zone euro frôle la **déflation**. Comme en 1929, des prix qui baissent rendent les dettes plus lourdes.',
+            ['activite', 'inflation', 'dette', 'activite>inflation', 'inflation>dette'],
+          ],
+          [
+            'Juillet 2012 : Mario Draghi promet que la **BCE** fera « tout ce qu’il faudra » pour sauver l’euro. Puis, en 2015, elle rachète massivement de la dette publique.',
+            ['bce', 'spread', 'inflation', 'bce>spread', 'bce>inflation'],
+            ['bce', 1],
+          ],
+          [
+            'Les taux d’emprunt retombent, les banques respirent, l’austérité se desserre, l’activité repart lentement. Regarde les courbes : la crise a duré près de dix ans, et la Grèce a perdu un quart de sa richesse.',
+            ['spread', 'banques', 'austerite', 'activite'],
+          ],
+          [
+            'La leçon : chaque crise a fabriqué la suivante. La crise des crédits est devenue une crise des banques, puis une crise des États, puis une menace de déflation. Recommence (↺) sans la BCE pour voir ce qu’elle a évité.',
+            [],
+          ],
+        ],
+      }),
+  },
+  {
+    id: 'bulleIA',
+    title: 'Une bulle de l’IA ?',
+    description: 'Valorisations, puces et centres de données s’emballent ensemble ; les revenus, eux, viennent lentement. Une course entre deux boucles, qui peut finir en éclatement ou en atterrissage en douceur.',
+    level: 3,
+    topic: 'economie',
+    shows: 'Course entre deux boucles',
+    build: () =>
+      doc({
+        unit: 'year',
+        horizon: 10,
+        nodes: [
+          ['engouement', 'Engouement', 'sand', -780, 60, 52, { relax: 3 }],
+          ['valorisations', 'Valorisations boursières', 'plum', -480, 60, 64, { kind: 'stock', init: 0.4, saturate: true }],
+          ['puces', 'Ventes de puces', 'ochre', -480, -260, 54],
+          ['investissements', 'Investissements dans l’IA', 'terracotta', -180, -180, 58],
+          ['datacenters', 'Centres de données', 'slate', 160, -180, 64, { kind: 'stock', init: 0.3, relax: 4 }],
+          ['couts', 'Coûts (électricité, puces à remplacer)', 'terracotta', 480, 40, 56],
+          ['usages', 'Usages de l’IA', 'sage', 60, 120, 62, { kind: 'stock', init: 0.3 }],
+          ['revenus', 'Revenus de l’IA', 'sage', -60, 360, 56],
+          ['rentabilite', 'Rentabilité', 'ochre', 300, 360, 58],
+        ],
+        edges: [
+          ['engouement', 'valorisations', 1, 0, { weight: 0.8 }],
+          ['valorisations', 'investissements', 1, 0],
+          ['investissements', 'puces', 1, 0],
+          ['puces', 'valorisations', 1, 0, { weight: 0.3 }],
+          ['investissements', 'datacenters', 1, 0, { weight: 0.8, delay: 1 }],
+          ['datacenters', 'couts', 1, 0],
+          ['datacenters', 'usages', 1, 0, { weight: 0.3, delay: 1 }],
+          ['usages', 'revenus', 1, 0],
+          ['revenus', 'rentabilite', 1, 0],
+          ['couts', 'rentabilite', -1, 0],
+          ['rentabilite', 'valorisations', 1, 0, { weight: 0.8, delay: 0.5 }],
+        ],
+        story: [
+          [
+            'Fin 2022, ChatGPT sort. En quelques mois, l’**engouement** pour l’IA générative gagne le monde entier.',
+            ['engouement'],
+            ['engouement', 1],
+          ],
+          [
+            'Les **valorisations** des entreprises de l’IA s’envolent : le fabricant de puces Nvidia devient l’une des entreprises les plus chères du monde.',
+            ['engouement', 'valorisations', 'engouement>valorisations'],
+          ],
+          [
+            'Des entreprises aussi chères lèvent des fortunes, et les géants du numérique **investissent** des centaines de milliards par an dans l’IA.',
+            ['valorisations', 'investissements', 'valorisations>investissements'],
+          ],
+          [
+            'Ces investissements, ce sont d’abord des **puces** achetées. Leurs ventes font monter les valorisations… qui financent encore plus d’achats : une **boucle renforçante**.',
+            ['valorisations', 'investissements', 'puces', 'valorisations>investissements', 'investissements>puces', 'puces>valorisations'],
+          ],
+          [
+            'Parfois, la boucle est même littérale : un fabricant de puces investit dans un laboratoire d’IA, qui lui achète des puces avec cet argent. On parle de **financement circulaire**.',
+            ['investissements', 'puces', 'investissements>puces', 'puces>valorisations'],
+          ],
+          [
+            'Avec ces puces, on construit des **centres de données** géants. Il faut des terrains, des raccordements électriques, des chantiers : un an ou plus (le retard).',
+            ['investissements', 'datacenters', 'investissements>datacenters'],
+          ],
+          [
+            'Un centre de données coûte cher tout de suite : électricité, refroidissement, et des puces dépassées en quelques années. Les **coûts** suivent la construction, sans attendre.',
+            ['datacenters', 'couts', 'datacenters>couts'],
+          ],
+          [
+            'En face, plus de calcul permet de meilleurs modèles et plus d’**usages** : assistants, programmation, traduction… qui rapportent des **revenus**. Mais l’adoption prend des années.',
+            ['datacenters', 'usages', 'revenus', 'datacenters>usages', 'usages>revenus'],
+          ],
+          [
+            'Tôt ou tard, les investisseurs regardent la **rentabilité** : les revenus rattrapent-ils les coûts ? C’est la question à mille milliards.',
+            ['revenus', 'couts', 'rentabilite', 'revenus>rentabilite', 'couts>rentabilite', 'rentabilite>valorisations'],
+          ],
+          [
+            'Ici, les coûts courent plus vite que les revenus : la rentabilité se dégrade, les valorisations reculent… et la boucle des investissements tourne à l’envers. C’est l’**éclatement**. Regarde les courbes.',
+            ['rentabilite', 'valorisations', 'investissements', 'puces', 'rentabilite>valorisations'],
+          ],
+          [
+            'Mais les usages, eux, continuent de grandir, et la rentabilité finit par revenir. C’est ce qui s’est passé avec Internet : la bulle a éclaté en 2000, et les câbles posés pendant la folie ont servi pendant vingt ans.',
+            ['usages', 'revenus', 'rentabilite'],
+          ],
+          [
+            'Recommence (↺) en montant la force du lien Centres de données → Usages, par exemple à 0,8 (une application qui change tout, des modèles bien moins chers) : les revenus rattrapent les coûts à temps, et l’atterrissage se fait en douceur.',
+            ['datacenters>usages'],
+          ],
+          [
+            'Personne ne sait lequel des deux scénarios l’emportera. Ce modèle ne prédit rien : il montre que tout se joue dans la **course entre deux boucles**, une rapide (la finance) et une lente (les usages).',
+            [],
+          ],
+        ],
+      }),
+  },
+  {
     id: 'reacteur',
     title: 'Un réacteur nucléaire',
     description: 'La réaction en chaîne, les barres de contrôle, les neutrons retardés qui rendent le pilotage possible, l’effet Doppler qui stabilise… et ce qui a mal tourné à Tchernobyl.',
